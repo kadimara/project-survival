@@ -1,15 +1,6 @@
-// Enemy + colonist AI: wander/chase/attack behavior for enemies, dispatch to
-// the per-caste colonist FSMs (worker-ai.ts/scout-ai.ts/soldier-ai.ts), and
-// nest production (spawning a new colonist once the player requests one).
-import type {
-  Colonist,
-  Enemy,
-  GameState,
-  HudRefs,
-  Target,
-} from '../types/types';
+// Enemy AI: wander until the player is sighted, then chase and attack.
+import type { Enemy, GameState, HudRefs, Player } from '../types/types';
 import {
-  CASTES,
   ENEMY_AGGRO_RADIUS,
   ENEMY_ATK_COOLDOWN,
   ENEMY_ATK_DAMAGE,
@@ -18,19 +9,10 @@ import {
   ENEMY_WANDER_MAX_MS,
   ENEMY_WANDER_MIN_MS,
   ENEMY_WANDER_RADIUS,
-  MAX_COLONISTS,
-  NEST_FOOD_COST,
-  NEST_INCUBATE_MS,
 } from '../constants';
-import {
-  effectiveNestFoodRadius,
-  isWall,
-  nestDistance,
-  playerInNestRadius,
-} from '../state/state';
+import { isSolid } from '../state/state';
 import {
   dirBetween,
-  spawnColonist,
   startStep,
   updateActorAnimation,
 } from '../entities/entities';
@@ -41,65 +23,38 @@ import {
   isAdjacent,
   type Walkable,
 } from './pathfinding';
-import { damageColonist, damagePlayer } from './combat';
-import { showToast, updateHud } from '../ui/hud';
-import { updateWorker } from './worker-ai';
-import { updateScout } from './scout-ai';
-import { updateSoldier } from './soldier-ai';
+import { damagePlayer } from './combat';
 
-function targetPos(target: Target) {
-  return { x: target.ref.tileX, y: target.ref.tileY };
-}
-
-function targetAlive(target: Target): boolean {
-  if (target.kind === 'player')
-    return target.ref.hp > 0 && target.ref.caste !== null;
-  return target.ref.hp > 0;
-}
-
-// finds the nearest valid target (player or a living colonist) within
-// aggro range and line of sight — enemies aren't picky about who they bite
+// finds the player if within aggro range and line of sight
 function findNearestTarget(
   state: GameState,
   fromX: number,
   fromY: number,
   radius: number,
-): Target | null {
-  const losCheck = (tx: number, ty: number) =>
-    hasLineOfSight(fromX, fromY, tx, ty, (x, y) => isWall(state, x, y));
-  let best: Target | null = null,
-    bestDist = Infinity;
+): Player | null {
   const { player } = state;
-  if (player.caste && player.hp > 0) {
-    const d = Math.hypot(player.tileX - fromX, player.tileY - fromY);
-    if (d <= radius && losCheck(player.tileX, player.tileY)) {
-      best = { kind: 'player', ref: player };
-      bestDist = d;
-    }
-  }
-  for (const c of state.colonists) {
-    if (c.hp <= 0) continue;
-    const d = Math.hypot(c.tileX - fromX, c.tileY - fromY);
-    if (d <= radius && d < bestDist && losCheck(c.tileX, c.tileY)) {
-      best = { kind: 'colonist', ref: c };
-      bestDist = d;
-    }
-  }
-  return best;
+  if (player.hp <= 0) return null;
+  const d = Math.hypot(player.tileX - fromX, player.tileY - fromY);
+  if (
+    d <= radius &&
+    hasLineOfSight(fromX, fromY, player.tileX, player.tileY, (x, y) =>
+      isSolid(state, x, y),
+    )
+  )
+    return player;
+  return null;
 }
 
 function attemptEnemyAttack(
   state: GameState,
   hud: HudRefs,
   enemy: Enemy,
-  target: Target,
   now: number,
 ): void {
   if (now - enemy.lastAttack < ENEMY_ATK_COOLDOWN) return;
   enemy.lastAttack = now;
   enemy.flashUntil = now + 140;
-  if (target.kind === 'player') damagePlayer(state, hud, ENEMY_ATK_DAMAGE, now);
-  else damageColonist(state, hud, target.ref, ENEMY_ATK_DAMAGE, now);
+  damagePlayer(state, hud, ENEMY_ATK_DAMAGE, now);
 }
 
 // ---- enemy AI: wander, then chase + attack on sight ----
@@ -116,7 +71,7 @@ export function updateEnemy(
     return;
   }
 
-  if (enemy.target && !targetAlive(enemy.target)) enemy.target = null;
+  if (enemy.target && enemy.target.hp <= 0) enemy.target = null;
   const sighted = findNearestTarget(
     state,
     enemy.tileX,
@@ -135,10 +90,10 @@ export function updateEnemy(
   }
 
   if (enemy.state === 'chase' && enemy.target) {
-    const pos = targetPos(enemy.target);
+    const pos = { x: enemy.target.tileX, y: enemy.target.tileY };
     if (isAdjacent(enemy.tileX, enemy.tileY, pos.x, pos.y)) {
       enemy.dir = dirBetween(enemy.tileX, enemy.tileY, pos.x, pos.y);
-      attemptEnemyAttack(state, hud, enemy, enemy.target, now);
+      attemptEnemyAttack(state, hud, enemy, now);
       return;
     }
     if (now >= enemy.nextRepathAt || enemy.path.length === 0) {
@@ -194,79 +149,5 @@ export function updateEnemy(
         dirBetween(enemy.tileX, enemy.tileY, next.x, next.y),
       );
     else enemy.path = [];
-  }
-}
-
-// ---- colonist AI: dispatch by caste to the per-caste FSM ----
-export function updateColonist(
-  state: GameState,
-  hud: HudRefs,
-  colonist: Colonist,
-  now: number,
-  walkable: Walkable,
-): void {
-  if (colonist.hp <= 0) return;
-  if (colonist.moving) {
-    updateActorAnimation(colonist, now);
-    return;
-  }
-
-  if (colonist.caste === 'soldier') {
-    updateSoldier(state, hud, colonist, now, walkable);
-    return;
-  }
-  if (colonist.caste === 'worker') {
-    updateWorker(state, hud, colonist, now, walkable);
-    return;
-  }
-  updateScout(state, hud, colonist, now, walkable); // only 'scout' remains
-}
-
-// ---- nest: spawning only happens when the player explicitly requests it
-// (via the nest overlay). updateNest() just resolves an in-progress one. ----
-export function startNestSpawn(
-  state: GameState,
-  hud: HudRefs,
-  casteKey: Colonist['caste'],
-): boolean {
-  const { nest } = state;
-  if (nest.incubating) return false;
-  if (!playerInNestRadius(state)) {
-    showToast(hud, "Stand within the nest's food circle to spawn an ant");
-    return false;
-  }
-  if (state.colonists.length >= MAX_COLONISTS) {
-    showToast(hud, 'Colony is at full population');
-    return false;
-  }
-  const nearbyIdx: number[] = [];
-  for (let i = 0; i < state.foodItems.length; i++) {
-    if (
-      nestDistance(state, state.foodItems[i].x, state.foodItems[i].y) <=
-      effectiveNestFoodRadius(state)
-    )
-      nearbyIdx.push(i);
-  }
-  if (nearbyIdx.length < NEST_FOOD_COST) {
-    showToast(hud, 'Not enough food near the nest');
-    return false;
-  }
-  for (const idx of nearbyIdx.slice(0, NEST_FOOD_COST).sort((a, b) => b - a))
-    state.foodItems.splice(idx, 1);
-  nest.incubating = true;
-  nest.incubateStart = performance.now();
-  nest.pendingCaste = casteKey;
-  showToast(hud, 'Nest producing a ' + CASTES[casteKey].name.toLowerCase());
-  return true;
-}
-
-export function updateNest(state: GameState, hud: HudRefs, now: number): void {
-  const { nest } = state;
-  if (!nest.incubating) return;
-  if (now - nest.incubateStart >= NEST_INCUBATE_MS) {
-    nest.incubating = false;
-    spawnColonist(state, nest.pendingCaste!);
-    nest.pendingCaste = null;
-    updateHud(state, hud);
   }
 }

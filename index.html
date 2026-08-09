@@ -10,10 +10,92 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <title>Colony: Roles</title>
+    <link rel="stylesheet" href="/src/index.css" />
+    <link rel="stylesheet" href="/src/colony.css" />
+    <title>Survival</title>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div class="stage">
+      <div class="canvas-stage">
+        <div class="viewport-wrap">
+          <canvas id="game" width="272" height="192"></canvas>
+        </div>
+
+        <div class="statusbar">
+          <div class="stat">
+            <span class="stat-label">HP</span>
+            <span class="stat-value" id="stat-hp">20/20</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Carrying</span>
+            <span class="stat-value" id="stat-carry">nothing</span>
+          </div>
+          <div class="stat seed-control">
+            <span class="stat-label">Seed</span>
+            <input id="seed-input" class="seed-input" type="text" />
+            <button id="seed-load-btn" class="switch-caste-btn">Load</button>
+            <button id="seed-random-btn" class="switch-caste-btn">Random</button>
+          </div>
+          <button id="map-toggle-btn" class="switch-caste-btn">
+            Map <span class="key">M</span>
+          </button>
+        </div>
+
+        <div class="zoom-controls">
+          <button id="zoom-in-btn" class="zoom-btn">+</button>
+          <button id="zoom-out-btn" class="zoom-btn">&minus;</button>
+        </div>
+
+        <div class="toast" id="toast"></div>
+
+        <div class="world-map-overlay" id="world-map-overlay">
+          <div class="world-map-panel">
+            <div class="world-map-title">
+              World map
+              <span style="font-weight: 400; color: var(--text-dim);">
+                — drag or scroll to pan
+              </span>
+            </div>
+            <div class="worldmap-scroll" id="worldmap-scroll">
+              <canvas id="worldmap-canvas"></canvas>
+            </div>
+            <button class="switch-caste-btn" id="world-map-close">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span class="legend-item">
+          <span class="swatch" style="background: #d99a3f"></span>
+          you
+        </span>
+        <span class="legend-item">
+          <span class="swatch" style="background: #8a8478"></span>
+          obstacle
+        </span>
+        <span class="legend-item">
+          <span class="swatch" style="background: #e8c44f"></span>
+          food
+        </span>
+        <span class="legend-item">
+          <span class="swatch" style="background: #8b3fae"></span>
+          enemy
+        </span>
+      </div>
+
+      <p class="hint">
+        <span class="key">click / tap</span> to move &nbsp;&middot;&nbsp;
+        <span class="key">WASD</span> / arrows also work &nbsp;&middot;&nbsp;
+        click an obstacle or food to pick it up, click open ground to set it
+        back down &nbsp;&middot;&nbsp; click a nearby enemy to attack it
+        &nbsp;&middot;&nbsp; scroll or
+        <span class="key">+</span> <span class="key">&minus;</span> to
+        zoom, <span class="key">M</span> for the world map &nbsp;&middot;&nbsp;
+        everything that dies drops a food item behind &nbsp;&middot;&nbsp;
+        the world is generated from the seed shown top-right — share it to
+        explore the same cave
+      </p>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

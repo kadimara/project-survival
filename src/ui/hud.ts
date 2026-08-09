@@ -1,22 +1,7 @@
-// HUD stat bar, toast messages, and the caste/nest/world-map overlays: DOM
-// refs plus pure render/open/close functions. Game-logic decisions (which
-// caste gets picked, whether a nest spawn is allowed) are injected as
-// callbacks from game.ts so this module never has to import player-actions
-// or ai directly.
-import type { CasteKey, GameState, HudRefs } from '../types/types';
-import {
-  CASTES,
-  CASTE_DESCRIPTIONS,
-  MAX_COLONISTS,
-  NEST_FOOD_COST,
-  WORLD_TILE,
-  NEST_CASTE_DESCRIPTIONS,
-} from '../constants';
-import {
-  countFoodNearNest,
-  effectiveNestFoodRadius,
-  playerInNestRadius,
-} from '../state/state';
+// HUD stat bar, toast messages, and the world-map overlay: DOM refs plus
+// pure render/open/close functions.
+import type { GameState, HudRefs } from '../types/types';
+import { WORLD_TILE } from '../constants';
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -26,24 +11,9 @@ function byId<T extends HTMLElement>(id: string): T {
 
 export function createHudRefs(): HudRefs {
   return {
-    statCaste: byId('stat-caste'),
     statHp: byId('stat-hp'),
     statCarry: byId('stat-carry'),
-    statTrail: byId('stat-trail'),
-    statPopulation: byId('stat-population'),
-    statNestLevel: byId('stat-nest-level'),
     toastEl: byId('toast'),
-
-    casteOverlay: byId('caste-overlay'),
-    casteRow: byId('caste-row'),
-    casteHeading: byId('caste-heading'),
-    casteCancel: byId('caste-cancel'),
-    switchCasteBtn: byId('switch-caste-btn'),
-
-    nestOverlay: byId('nest-overlay'),
-    nestStatusEl: byId('nest-status'),
-    nestRow: byId('nest-row'),
-    nestCancel: byId('nest-cancel'),
 
     worldMapOverlay: byId('world-map-overlay'),
     worldMapCloseBtn: byId('world-map-close'),
@@ -59,14 +29,8 @@ export function createHudRefs(): HudRefs {
 }
 
 export function updateHud(state: GameState, hud: HudRefs): void {
-  hud.statCaste.textContent = state.player.caste
-    ? CASTES[state.player.caste].name
-    : 'none';
   hud.statHp.textContent = state.player.hp + '/' + state.player.maxHp;
-  hud.statCarry.textContent = state.player.carryingType || 'nothing';
-  hud.statTrail.textContent = String(state.scentTrail.size);
-  hud.statPopulation.textContent = state.colonists.length + '/' + MAX_COLONISTS;
-  hud.statNestLevel.textContent = String(state.nest.level);
+  hud.statCarry.textContent = state.player.held ?? 'nothing';
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -75,120 +39,6 @@ export function showToast(hud: HudRefs, msg: string): void {
   hud.toastEl.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => hud.toastEl.classList.remove('show'), 1800);
-}
-
-function buildCasteCard(key: CasteKey, description: string): HTMLDivElement {
-  const def = CASTES[key];
-  const card = document.createElement('div');
-  card.className = 'caste-card';
-  const swatch = document.createElement('div');
-  swatch.className = 'caste-swatch';
-  swatch.style.background = def.color;
-  swatch.style.borderColor = def.edge;
-  card.appendChild(swatch);
-  const name = document.createElement('div');
-  name.className = 'caste-name';
-  name.textContent = def.name;
-  card.appendChild(name);
-  const stats = document.createElement('div');
-  stats.className = 'caste-stats';
-  stats.textContent = description;
-  card.appendChild(stats);
-  return card;
-}
-
-function renderCasteCards(
-  state: GameState,
-  hud: HudRefs,
-  onSelect: (key: CasteKey) => void,
-): void {
-  hud.casteRow.innerHTML = '';
-  (Object.keys(CASTES) as CasteKey[]).forEach((key) => {
-    const card = buildCasteCard(key, CASTE_DESCRIPTIONS[key]);
-    if (key === state.player.caste) card.style.borderColor = CASTES[key].color;
-    card.addEventListener('click', () => {
-      onSelect(key);
-      hud.casteOverlay.style.display = 'none';
-    });
-    hud.casteRow.appendChild(card);
-  });
-}
-
-export function openCasteOverlay(
-  state: GameState,
-  hud: HudRefs,
-  onSelect: (key: CasteKey) => void,
-): void {
-  const switching = state.player.caste !== null;
-  hud.casteHeading.textContent = switching
-    ? 'switch caste'
-    : 'choose your caste';
-  hud.casteCancel.style.display = switching ? 'block' : 'none';
-  renderCasteCards(state, hud, onSelect);
-  hud.casteOverlay.style.display = 'flex';
-}
-
-export function closeCasteOverlay(hud: HudRefs): void {
-  hud.casteOverlay.style.display = 'none';
-}
-
-function renderNestOverlay(
-  state: GameState,
-  hud: HudRefs,
-  onSelect: (key: CasteKey) => boolean,
-): void {
-  const available = countFoodNearNest(state);
-  const inRadius = playerInNestRadius(state);
-  const { nest, colonists } = state;
-  hud.nestStatusEl.textContent =
-    'Population ' +
-    colonists.length +
-    '/' +
-    MAX_COLONISTS +
-    ' · food within ' +
-    effectiveNestFoodRadius(state) +
-    ' tiles: ' +
-    available +
-    (nest.incubating
-      ? ' · producing a ' + CASTES[nest.pendingCaste!].name.toLowerCase() + '…'
-      : inRadius
-        ? ''
-        : ' · stand inside the food circle to spawn');
-
-  hud.nestRow.innerHTML = '';
-  const blocked =
-    nest.incubating ||
-    colonists.length >= MAX_COLONISTS ||
-    available < NEST_FOOD_COST ||
-    !inRadius;
-  (Object.keys(CASTES) as CasteKey[]).forEach((key) => {
-    const card = buildCasteCard(
-      key,
-      NEST_CASTE_DESCRIPTIONS[key] + ' — costs ' + NEST_FOOD_COST + ' food',
-    );
-    if (blocked) {
-      card.style.opacity = '0.45';
-      card.style.cursor = 'default';
-    }
-    card.addEventListener('click', () => {
-      if (blocked) return;
-      if (onSelect(key)) hud.nestOverlay.style.display = 'none';
-    });
-    hud.nestRow.appendChild(card);
-  });
-}
-
-export function openNestOverlay(
-  state: GameState,
-  hud: HudRefs,
-  onSelect: (key: CasteKey) => boolean,
-): void {
-  renderNestOverlay(state, hud, onSelect);
-  hud.nestOverlay.style.display = 'flex';
-}
-
-export function closeNestOverlay(hud: HudRefs): void {
-  hud.nestOverlay.style.display = 'none';
 }
 
 export function setMapOpen(

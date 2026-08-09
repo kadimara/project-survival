@@ -1,34 +1,21 @@
-// Entity factories (enemies, colonists) and the generic actor-movement
-// primitives shared by the player, enemies, and colonists. Placement uses
-// state/state.ts's occupancy queries; nothing in state/ imports back from
-// here (spawnEnemies is injected into state's createGameState/regenerateWorld
-// as a callback instead) so there's no import cycle between the two.
-import type {
-  Actor,
-  CasteKey,
-  Colonist,
-  Dir,
-  Enemy,
-  GameState,
-  Point,
-} from '../types/types';
+// Entity factories (enemies) and the generic actor-movement primitives
+// shared by the player and enemies. Placement uses state/state.ts's
+// occupancy queries; nothing in state/ imports back from here (spawnEnemies
+// is injected into state's createGameState/regenerateWorld as a callback
+// instead) so there's no import cycle between the two.
+import type { Actor, Dir, Enemy, GameState, Point } from '../types/types';
 import {
-  COLONIST_MAX_HP,
-  COLONIST_MOVE_DUR,
-  COLONIST_WANDER_MAX_MS,
-  COLONIST_WANDER_MIN_MS,
   ENEMY_COUNT,
   ENEMY_MAX_HP,
   ENEMY_MOVE_DUR,
   ENEMY_SPAWN_MIN_DIST,
   ENEMY_WANDER_MAX_MS,
   ENEMY_WANDER_MIN_MS,
-  MAX_COLONISTS,
   SPAWN_X,
   SPAWN_Y,
   TILE,
 } from '../constants';
-import { randomOpenTile, randomOpenTileNear } from '../state/state';
+import { randomOpenTile } from '../state/state';
 
 function makeEnemy(x: number, y: number): Enemy {
   return {
@@ -76,59 +63,7 @@ export function spawnEnemies(state: GameState): void {
   }
 }
 
-function makeColonist(caste: CasteKey, x: number, y: number): Colonist {
-  return {
-    caste,
-    tileX: x,
-    tileY: y,
-    px: x * TILE,
-    py: y * TILE,
-    dir: 'down',
-    moving: false,
-    moveStart: 0,
-    moveDur: COLONIST_MOVE_DUR[caste],
-    fromX: x,
-    fromY: y,
-    toX: x,
-    toY: y,
-    hp: COLONIST_MAX_HP[caste],
-    maxHp: COLONIST_MAX_HP[caste],
-    path: [],
-    carrying: null,
-    soldierState: 'patrolling',
-    scoutState: 'scouting',
-    dropTarget: null,
-    forageTarget: null,
-    wallTarget: null,
-    carryOrigin: null,
-    alertTarget: null,
-    aggroTarget: null,
-    nextWanderAt:
-      performance.now() +
-      COLONIST_WANDER_MIN_MS +
-      Math.random() * (COLONIST_WANDER_MAX_MS - COLONIST_WANDER_MIN_MS),
-    nextRepathAt: 0,
-    lastAttack: 0,
-    aggroUntil: 0,
-    flashUntil: 0,
-    attacked: false,
-    exploreTarget: null,
-    scentActive: false,
-    scentOrigins: [],
-    scentType: null,
-    digTile: null,
-  };
-}
-
-export function spawnColonist(state: GameState, caste: CasteKey): void {
-  if (state.colonists.length >= MAX_COLONISTS) return;
-  const spot =
-    randomOpenTileNear(state, state.nest.x, state.nest.y, 4) ||
-    randomOpenTile(state);
-  if (spot) state.colonists.push(makeColonist(caste, spot.x, spot.y));
-}
-
-// ---- generic actor movement primitives (shared by player/enemy/colonist) ----
+// ---- generic actor movement primitives (shared by player/enemy) ----
 export function dirBetween(
   fromX: number,
   fromY: number,

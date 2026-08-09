@@ -3,32 +3,20 @@
 // no game logic lives here, only presentation.
 import type { GameState, Point } from '../types/types';
 import {
-  CASTES,
+  carryColor,
+  ITEM_DEFS,
   MAP_H,
   MAP_W,
-  NEST_SIZE,
+  PLAYER_COLOR,
+  PLAYER_EDGE,
+  PLAYER_INSET,
   TILE,
+  TILE_DEFS,
   WORLD_TILE,
 } from '../constants';
 import { getClampedCamX, getClampedCamY } from './camera';
-import {
-  effectiveNestFoodRadius,
-  isColonistAt,
-  isFrontierDropCandidate,
-  isNestAt,
-  isWall,
-  nestCells,
-  nestDistance,
-  obstacleAt,
-} from '../state/state';
-import { DIRT } from '../worldgen/worldgen';
-import {
-  drawHpBar,
-  drawNest,
-  drawNestRadius,
-  drawSquareEntity,
-  drawTile,
-} from './rendering';
+import { tileAt } from '../state/state';
+import { drawHpBar, drawSquareEntity } from './rendering';
 
 export function renderWorldMap(state: GameState): void {
   const { worldCanvas, worldCtx } = state.refs;
@@ -36,29 +24,20 @@ export function renderWorldMap(state: GameState): void {
   worldCtx.fillRect(0, 0, worldCanvas.width, worldCanvas.height);
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
-      worldCtx.fillStyle = isWall(state, x, y) ? '#8a8478' : '#4a331d';
+      const type = tileAt(state, x, y);
+      worldCtx.fillStyle = type ? TILE_DEFS[type].colors.primary : '#4a331d';
       worldCtx.fillRect(x * WORLD_TILE, y * WORLD_TILE, WORLD_TILE, WORLD_TILE);
     }
   }
-  for (const key of state.scentTrail.keys()) {
-    const [tx, ty] = key.split(',').map(Number);
-    worldCtx.fillStyle =
-      state.scentTrailType.get(key) === 'alarm' ? '#e0725c' : '#9be89b';
+  for (const item of state.groundItems.values()) {
+    worldCtx.fillStyle = ITEM_DEFS[item.type].colors.primary;
     worldCtx.fillRect(
-      tx * WORLD_TILE + 1,
-      ty * WORLD_TILE + 1,
-      WORLD_TILE - 2,
-      WORLD_TILE - 2,
+      item.x * WORLD_TILE,
+      item.y * WORLD_TILE,
+      WORLD_TILE,
+      WORLD_TILE,
     );
   }
-  worldCtx.fillStyle = '#e8c44f';
-  for (const f of state.foodItems)
-    worldCtx.fillRect(
-      f.x * WORLD_TILE,
-      f.y * WORLD_TILE,
-      WORLD_TILE,
-      WORLD_TILE,
-    );
   worldCtx.fillStyle = '#8b3fae';
   for (const en of state.enemies) {
     if (en.hp <= 0) continue;
@@ -69,32 +48,13 @@ export function renderWorldMap(state: GameState): void {
       WORLD_TILE + 2,
     );
   }
-  worldCtx.fillStyle = '#f2efe6';
+  worldCtx.fillStyle = PLAYER_COLOR;
   worldCtx.fillRect(
-    state.nest.x * WORLD_TILE - 1,
-    state.nest.y * WORLD_TILE - 1,
-    WORLD_TILE * 2 + 2,
-    WORLD_TILE * 2 + 2,
+    state.player.tileX * WORLD_TILE - 1,
+    state.player.tileY * WORLD_TILE - 1,
+    WORLD_TILE + 2,
+    WORLD_TILE + 2,
   );
-  for (const c of state.colonists) {
-    if (c.hp <= 0) continue;
-    worldCtx.fillStyle = CASTES[c.caste].color;
-    worldCtx.fillRect(
-      c.tileX * WORLD_TILE,
-      c.tileY * WORLD_TILE,
-      WORLD_TILE,
-      WORLD_TILE,
-    );
-  }
-  if (state.player.caste) {
-    worldCtx.fillStyle = CASTES[state.player.caste].color;
-    worldCtx.fillRect(
-      state.player.tileX * WORLD_TILE - 1,
-      state.player.tileY * WORLD_TILE - 1,
-      WORLD_TILE + 2,
-      WORLD_TILE + 2,
-    );
-  }
 }
 
 export function render(state: GameState, now: number): void {
@@ -114,44 +74,6 @@ export function render(state: GameState, now: number): void {
     canvas.height,
   );
 
-  // nest food-radius overlay (under everything else on the ground, like the scent trail)
-  {
-    const radius = effectiveNestFoodRadius(state);
-    const minX = state.nest.x - radius,
-      maxX = state.nest.x + NEST_SIZE - 1 + radius;
-    const minY = state.nest.y - radius,
-      maxY = state.nest.y + NEST_SIZE - 1 + radius;
-    drawNestRadius(
-      ctx,
-      TILE,
-      canvas.width,
-      canvas.height,
-      camX,
-      camY,
-      minX,
-      maxX,
-      minY,
-      maxY,
-      (tx, ty) => nestDistance(state, tx, ty) <= radius,
-    );
-  }
-
-  // scent trail (under everything else on the ground)
-  for (const key of state.scentTrail.keys()) {
-    const [tx, ty] = key.split(',').map(Number);
-    const sx = tx * TILE - camX,
-      sy = ty * TILE - camY;
-    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
-      continue;
-    ctx.fillStyle =
-      state.scentTrailType.get(key) === 'alarm'
-        ? 'rgba(224,114,92,0.4)'
-        : 'rgba(155,232,155,0.35)';
-    ctx.beginPath();
-    ctx.arc(sx + TILE / 2, sy + TILE / 2, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
   for (const step of player.path) {
     const cx = step.x * TILE + TILE / 2 - camX,
       cy = step.y * TILE + TILE / 2 - camY;
@@ -161,53 +83,19 @@ export function render(state: GameState, now: number): void {
     ctx.fill();
   }
 
-  for (const f of state.foodItems) {
-    const sx = f.x * TILE - camX,
-      sy = f.y * TILE - camY;
+  for (const item of state.groundItems.values()) {
+    const sx = item.x * TILE - camX,
+      sy = item.y * TILE - camY;
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
     const size = Math.max(4, Math.round(TILE * 0.4));
     const ix = sx + (TILE - size) / 2,
       iy = sy + (TILE - size) / 2;
-    ctx.fillStyle = '#a8862f';
+    const { primary, secondary } = ITEM_DEFS[item.type].colors;
+    ctx.fillStyle = secondary;
     ctx.fillRect(ix - 1, iy - 1, size + 2, size + 2);
-    ctx.fillStyle = '#e8c44f';
+    ctx.fillStyle = primary;
     ctx.fillRect(ix, iy, size, size);
-  }
-
-  {
-    const sx = state.nest.x * TILE - camX,
-      sy = state.nest.y * TILE - camY;
-    if (
-      sx > -TILE * NEST_SIZE &&
-      sy > -TILE * NEST_SIZE &&
-      sx < canvas.width &&
-      sy < canvas.height
-    ) {
-      for (const cell of nestCells(state))
-        drawTile(ctx, TILE, DIRT, cell.x * TILE - camX, cell.y * TILE - camY);
-      drawNest(ctx, TILE, NEST_SIZE, sx, sy, now, state.nest.incubating);
-    }
-  }
-
-  for (const colonist of state.colonists) {
-    if (colonist.hp <= 0) continue;
-    const sx = colonist.px - camX,
-      sy = colonist.py - camY;
-    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
-      continue;
-    const def = CASTES[colonist.caste];
-    drawSquareEntity(ctx, TILE, sx, sy, def.color, def.edge, def.inset);
-    if (colonist.flashUntil && now < colonist.flashUntil) {
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillRect(sx + 3, sy + 3, TILE - 6, TILE - 6);
-    }
-    if (colonist.carrying) {
-      ctx.fillStyle = colonist.carrying === 'obstacle' ? '#b0aaa0' : '#e8c44f';
-      ctx.fillRect(sx + TILE / 2 - 1.5, sy - 4, 3, 3);
-    }
-    if (colonist.hp < colonist.maxHp)
-      drawHpBar(ctx, TILE, sx, sy, colonist.hp / colonist.maxHp);
   }
 
   for (const enemy of state.enemies) {
@@ -224,16 +112,22 @@ export function render(state: GameState, now: number): void {
       drawHpBar(ctx, TILE, sx, sy, enemy.hp / enemy.maxHp);
   }
 
-  if (player.caste) {
+  {
     const sx = player.px - camX,
       sy = player.py - camY;
-    const def = CASTES[player.caste];
     if (player.invulnUntil && now < player.invulnUntil) ctx.globalAlpha = 0.55;
-    drawSquareEntity(ctx, TILE, sx, sy, def.color, def.edge, def.inset);
+    drawSquareEntity(
+      ctx,
+      TILE,
+      sx,
+      sy,
+      PLAYER_COLOR,
+      PLAYER_EDGE,
+      PLAYER_INSET,
+    );
     ctx.globalAlpha = 1;
-    if (player.carryingType) {
-      ctx.fillStyle =
-        player.carryingType === 'obstacle' ? '#b0aaa0' : '#e8c44f';
+    if (player.held) {
+      ctx.fillStyle = carryColor(player.held);
       ctx.fillRect(sx + TILE / 2 - 2, sy - 5, 4, 4);
     }
     if (player.hp < player.maxHp)
@@ -250,11 +144,10 @@ export function render(state: GameState, now: number): void {
   ) {
     const hx = hovered.x * TILE - camX,
       hy = hovered.y * TILE - camY;
-    const blocked =
-      obstacleAt(state, hovered.x, hovered.y) ||
-      isNestAt(state, hovered.x, hovered.y) ||
-      isColonistAt(state, hovered.x, hovered.y);
-    ctx.strokeStyle = blocked ? '#8a8478' : '#ffffff';
+    const hoveredType = tileAt(state, hovered.x, hovered.y);
+    ctx.strokeStyle = hoveredType
+      ? TILE_DEFS[hoveredType].colors.primary
+      : '#ffffff';
     ctx.lineWidth = 1;
     ctx.strokeRect(hx + 0.5, hy + 0.5, TILE - 1, TILE - 1);
   }
@@ -274,75 +167,6 @@ export function render(state: GameState, now: number): void {
     ctx.textAlign = 'center';
     ctx.fillText(ft.text, ft.worldX - camX, ft.worldY - camY - yOff);
     ctx.globalAlpha = 1;
-  }
-
-  // F12 debug overlay: drop-site candidates (teal) under walls-to-dig
-  // (nest=amber, trail=magenta), with a yellow/white outline on whichever
-  // food/wall tile is actually some colonist's forageTarget/wallTarget
-  if (state.debugOverlay) {
-    const minTX = Math.max(0, Math.floor(camX / TILE));
-    const maxTX = Math.min(MAP_W - 1, Math.ceil((camX + canvas.width) / TILE));
-    const minTY = Math.max(0, Math.floor(camY / TILE));
-    const maxTY = Math.min(MAP_H - 1, Math.ceil((camY + canvas.height) / TILE));
-
-    for (let ty = minTY; ty <= maxTY; ty++) {
-      for (let tx = minTX; tx <= maxTX; tx++) {
-        if (!isFrontierDropCandidate(state, tx, ty)) continue;
-        const sx = tx * TILE - camX,
-          sy = ty * TILE - camY;
-        ctx.fillStyle = 'rgba(90,170,220,0.35)';
-        ctx.fillRect(sx, sy, TILE, TILE);
-      }
-    }
-
-    for (const key of state.nestWallsToDig) {
-      const [tx, ty] = key.split(',').map(Number);
-      const sx = tx * TILE - camX,
-        sy = ty * TILE - camY;
-      if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
-        continue;
-      ctx.fillStyle = 'rgba(224,120,60,0.45)';
-      ctx.fillRect(sx, sy, TILE, TILE);
-    }
-    for (const key of state.trailWallsToDig) {
-      const [tx, ty] = key.split(',').map(Number);
-      const sx = tx * TILE - camX,
-        sy = ty * TILE - camY;
-      if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
-        continue;
-      ctx.fillStyle = 'rgba(224,60,190,0.45)';
-      ctx.fillRect(sx, sy, TILE, TILE);
-    }
-
-    // outline whichever food/wall tile is some colonist's current
-    // forageTarget/wallTarget, on top of the fills above, so it's obvious
-    // at a glance which of the queued candidates are actually claimed
-    const forageTargets = new Set<string>();
-    const wallTargets = new Set<string>();
-    for (const c of state.colonists) {
-      if (c.forageTarget)
-        forageTargets.add(c.forageTarget.x + ',' + c.forageTarget.y);
-      if (c.wallTarget) wallTargets.add(c.wallTarget.x + ',' + c.wallTarget.y);
-    }
-    ctx.lineWidth = 1;
-    for (const key of forageTargets) {
-      const [tx, ty] = key.split(',').map(Number);
-      const sx = tx * TILE - camX,
-        sy = ty * TILE - camY;
-      if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
-        continue;
-      ctx.strokeStyle = '#e8c44f';
-      ctx.strokeRect(sx + 0.5, sy + 0.5, TILE - 1, TILE - 1);
-    }
-    for (const key of wallTargets) {
-      const [tx, ty] = key.split(',').map(Number);
-      const sx = tx * TILE - camX,
-        sy = ty * TILE - camY;
-      if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
-        continue;
-      ctx.strokeStyle = '#ffffff';
-      ctx.strokeRect(sx + 0.5, sy + 0.5, TILE - 1, TILE - 1);
-    }
   }
 
   const grad = ctx.createRadialGradient(

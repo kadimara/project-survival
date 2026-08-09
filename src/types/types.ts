@@ -1,47 +1,28 @@
-// Shared type definitions for the colony game engine. GameState is the single
-// bag of mutable simulation state that every other module reads and writes —
-// modules take it as a parameter instead of closing over local variables, so
-// each file's dependencies are explicit and it stays independently readable.
+// Shared type definitions for the survival game engine. GameState is the
+// single bag of mutable simulation state that every other module reads and
+// writes — modules take it as a parameter instead of closing over local
+// variables, so each file's dependencies are explicit and it stays
+// independently readable.
 import type { Rng } from '../worldgen/worldgen';
 
-export type CasteKey = 'worker' | 'soldier' | 'scout';
 export type Dir = 'up' | 'down' | 'left' | 'right';
-export type CarryType = 'obstacle' | 'food';
-export type ScentType = 'food' | 'alarm';
-export type SoldierState =
-  'patrolling' | 'followingAlertScent' | 'attacking' | 'returningToNest';
-export type ScoutState = 'scouting' | 'returningToNest';
+
+// tiles are the grid layer: solid, atlas-baked (see TILE_DEFS in
+// constants.ts). Items are the ground layer: loose, drawn per-frame, sit on
+// top of terrain rather than being part of the grid (see ITEM_DEFS).
+export type TileType = 'rock' | 'ore';
+export type ItemType = 'berry';
+export type CarryType = TileType | ItemType;
 
 export interface Point {
   x: number;
   y: number;
 }
 
-export type FoodItem = Point;
-
-// a worker's request to claim a target for the tick it's submitted on —
-// queued instead of committed immediately so contested targets can be
-// resolved by lowest distance once every idle worker has had a chance to
-// bid, rather than by whichever worker happened to run first in the update
-// loop (see resolveTargetBids in state.ts)
-export interface ForageBid {
-  colonist: Colonist;
-  target: FoodItem;
-  dist: number;
-}
-
-export interface WallBid {
-  colonist: Colonist;
-  target: Point;
-  dist: number;
-}
-
-export interface CasteDef {
-  name: string;
-  color: string;
-  edge: string;
-  moveDur: number;
-  inset: number;
+// entry in the ground-item layer; needs its own x/y since it's stored in a
+// position-keyed map alongside its key, for convenient per-frame iteration
+export interface GroundItem extends Point {
+  type: ItemType;
 }
 
 export interface ZoomLevel {
@@ -49,7 +30,7 @@ export interface ZoomLevel {
   vph: number;
 }
 
-// common movement/animation fields shared by the player, enemies, and colonists
+// common movement/animation fields shared by the player and enemies
 export interface Actor {
   tileX: number;
   tileY: number;
@@ -67,74 +48,30 @@ export interface Actor {
 }
 
 export type PendingAction =
-  | { type: 'pickup'; x: number; y: number; kind: CarryType }
+  | { type: 'pickup'; x: number; y: number }
   | { type: 'place'; x: number; y: number };
 
 export interface Player extends Actor {
-  caste: CasteKey | null;
-  carryingType: CarryType | null;
+  held: CarryType | null;
   pendingAction: PendingAction | null;
-  scentActive: boolean;
-  scentOrigins: Point[];
-  scentType: ScentType | null;
   attacked: boolean;
   attackTarget: Enemy | null;
   lastAttack: number;
   hp: number;
   maxHp: number;
   invulnUntil: number;
-  digTile: Point | null;
 }
-
-export type Target =
-  { kind: 'player'; ref: Player } | { kind: 'colonist'; ref: Colonist };
 
 export interface Enemy extends Actor {
   hp: number;
   maxHp: number;
   state: 'wander' | 'chase';
-  target: Target | null;
+  target: Player | null;
   nextWanderAt: number;
   nextRepathAt: number;
   lastAttack: number;
   aggroUntil: number;
   flashUntil: number;
-}
-
-export interface Colonist extends Actor {
-  caste: CasteKey;
-  hp: number;
-  maxHp: number;
-  carrying: CarryType | null;
-  soldierState: SoldierState;
-  scoutState: ScoutState;
-  dropTarget: Point | null;
-  forageTarget: FoodItem | null;
-  wallTarget: Point | null;
-  carryOrigin: 'forage' | 'nestClean' | null;
-  alertTarget: Point | null;
-  aggroTarget: Enemy | null;
-  nextWanderAt: number;
-  nextRepathAt: number;
-  lastAttack: number;
-  aggroUntil: number;
-  flashUntil: number;
-  attacked: boolean;
-  exploreTarget: Point | null;
-  scentActive: boolean;
-  scentOrigins: Point[];
-  scentType: ScentType | null;
-  digTile: Point | null;
-}
-
-export interface Nest {
-  x: number;
-  y: number;
-  incubating: boolean;
-  incubateStart: number;
-  pendingCaste: CasteKey | null;
-  level: number;
-  workProgress: number;
 }
 
 export interface FloatingText {
@@ -154,26 +91,11 @@ export interface GameRefs {
   groundAtlasCtx: CanvasRenderingContext2D;
 }
 
-// DOM element refs for the HUD stat bar and the caste/nest/world-map overlays
+// DOM element refs for the HUD stat bar and the world-map overlay
 export interface HudRefs {
-  statCaste: HTMLElement;
   statHp: HTMLElement;
   statCarry: HTMLElement;
-  statTrail: HTMLElement;
-  statPopulation: HTMLElement;
-  statNestLevel: HTMLElement;
   toastEl: HTMLElement;
-
-  casteOverlay: HTMLElement;
-  casteRow: HTMLElement;
-  casteHeading: HTMLElement;
-  casteCancel: HTMLElement;
-  switchCasteBtn: HTMLElement;
-
-  nestOverlay: HTMLElement;
-  nestStatusEl: HTMLElement;
-  nestRow: HTMLElement;
-  nestCancel: HTMLElement;
 
   worldMapOverlay: HTMLElement;
   worldMapCloseBtn: HTMLElement;
@@ -193,37 +115,15 @@ export interface GameState {
   seed: number;
   rng: Rng;
   map: number[][];
-  wallSet: Set<string>;
-  unreachableWalls: Set<string>;
-  // wall tiles a worker should treat as diggable, split by why they qualify
-  // so nearestTrailWall/nearestDiggableWallNearNest can search trail
-  // walls first without a runtime scentTrail check per candidate — both are
-  // always a subset of wallSet, kept in sync in setWall. A wall can appear
-  // in both. If nest.level ever starts advancing effectiveNestFoodRadius,
-  // re-run populateWallsToDigNearNest after the change since nestWallsToDig
-  // is event-driven (updated on setWall calls), not recomputed from radius
-  // each tick.
-  nestWallsToDig: Set<string>;
-  // resealed walls that coincide with a live scent-trail tile (see setWall)
-  trailWallsToDig: Set<string>;
-  foodItems: FoodItem[];
+  tiles: Map<string, TileType>;
+  groundItems: Map<string, GroundItem>;
   enemies: Enemy[];
-  colonists: Colonist[];
-  nest: Nest;
   player: Player;
-  scentTrail: Map<string, number>;
-  scentTrailSource: Map<string, Point[]>;
-  scentTrailType: Map<string, ScentType>;
   floatingTexts: FloatingText[];
-  // bids submitted this tick by idle workers, resolved (and cleared) once
-  // per tick by resolveTargetBids — see ForageBid/WallBid
-  pendingForageBids: ForageBid[];
-  pendingWallBids: WallBid[];
 
   zoomIndex: number;
   VP_W: number;
   VP_H: number;
   mapOpen: boolean;
   hoveredTile: Point | null;
-  debugOverlay: boolean;
 }

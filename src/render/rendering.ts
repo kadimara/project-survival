@@ -1,8 +1,10 @@
-// Low-level canvas drawing primitives: tiles, obstacles, entity squares, HP
-// bars, and the nest/nest-radius sprites. Each function only takes the
-// canvas context plus the primitive values it needs to draw one thing, so
-// none of it depends on the game's entity/state model.
+// Low-level canvas drawing primitives: tiles, obstacles, entity squares, and
+// HP bars. Each function only takes the canvas context plus the primitive
+// values it needs to draw one thing, so none of it depends on the game's
+// entity/state model.
 import { DIRT, DIRT2 } from '../worldgen/worldgen';
+import { TILE_DEFS } from '../constants';
+import type { TileType } from '../types/types';
 
 export const COLORS: Record<number, [string, string]> = {
   [DIRT]: ['#4a331d', '#402c19'],
@@ -29,13 +31,15 @@ export function drawObstacle(
   TILE: number,
   sx: number,
   sy: number,
+  type: TileType,
 ): void {
   drawTile(ctx, TILE, DIRT, sx, sy);
+  const { primary, secondary } = TILE_DEFS[type].colors;
   const m1 = Math.max(1, Math.round(TILE * 0.09));
   const m2 = Math.max(1, Math.round(TILE * 0.16));
-  ctx.fillStyle = '#5e594e';
+  ctx.fillStyle = secondary;
   ctx.fillRect(sx + m1, sy + m1, TILE - m1 * 2, TILE - m1 * 2);
-  ctx.fillStyle = '#8a8478';
+  ctx.fillStyle = primary;
   ctx.fillRect(sx + m2, sy + m2, TILE - m2 * 2, TILE - m2 * 2);
 }
 
@@ -74,71 +78,4 @@ export function drawHpBar(
   else if (ratio <= 0.5) fill = '#f5a623';
   ctx.fillStyle = fill;
   ctx.fillRect(bx, by, Math.max(0, w * ratio), h);
-}
-
-export function drawNest(
-  ctx: CanvasRenderingContext2D,
-  TILE: number,
-  NEST_SIZE: number,
-  sx: number,
-  sy: number,
-  now: number,
-  incubating: boolean,
-): void {
-  // a plain white 2x2 block, like a clutch of eggs — sx,sy is the
-  // screen position of the nest's top-left tile
-  const w = TILE * NEST_SIZE,
-    h = TILE * NEST_SIZE,
-    inset = 4;
-  ctx.fillStyle = '#8a8478';
-  ctx.fillRect(
-    sx + inset - 1,
-    sy + inset - 1,
-    w - inset * 2 + 2,
-    h - inset * 2 + 2,
-  );
-  ctx.fillStyle = '#f2efe6';
-  ctx.fillRect(sx + inset, sy + inset, w - inset * 2, h - inset * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(
-    sx + inset + 2,
-    sy + inset + 2,
-    (w - inset * 2) * 0.4,
-    (h - inset * 2) * 0.4,
-  );
-  if (incubating) {
-    const pulse = 0.5 + 0.5 * Math.sin(now / 220);
-    ctx.fillStyle = 'rgba(217,119,87,' + (0.15 + pulse * 0.3) + ')';
-    ctx.fillRect(sx + inset, sy + inset, w - inset * 2, h - inset * 2);
-  }
-}
-
-// shows which tiles are close enough to the nest for food to fuel a spawn.
-// withinRadius(tx,ty) decides which tiles in the [minX,maxX]x[minY,maxY]
-// box get shaded, keeping this primitive agnostic of how "nest distance" is
-// actually computed.
-export function drawNestRadius(
-  ctx: CanvasRenderingContext2D,
-  TILE: number,
-  canvasWidth: number,
-  canvasHeight: number,
-  camX: number,
-  camY: number,
-  minX: number,
-  maxX: number,
-  minY: number,
-  maxY: number,
-  withinRadius: (tx: number, ty: number) => boolean,
-): void {
-  ctx.fillStyle = 'rgba(232,196,79,0.10)';
-  for (let ty = minY; ty <= maxY; ty++) {
-    for (let tx = minX; tx <= maxX; tx++) {
-      if (!withinRadius(tx, ty)) continue;
-      const sx = tx * TILE - camX,
-        sy = ty * TILE - camY;
-      if (sx < -TILE || sy < -TILE || sx > canvasWidth || sy > canvasHeight)
-        continue;
-      ctx.fillRect(sx, sy, TILE, TILE);
-    }
-  }
 }
