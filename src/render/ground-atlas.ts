@@ -1,4 +1,4 @@
-// Pre-rendered full-map ground+wall layer. Painting every visible tile with
+// Pre-rendered full-map ground+stone layer. Painting every visible tile with
 // fillRect calls each frame is the dominant cost at far zoom (thousands of
 // tiles/frame); instead we paint the whole map once into an offscreen canvas
 // and the main render loop blits the visible sub-rect with a single

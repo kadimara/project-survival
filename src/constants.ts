@@ -34,7 +34,7 @@ export const TILE_DEFS: Record<
     colors: { primary: string; secondary: string };
   }
 > = {
-  rock: {
+  stone: {
     solid: true,
     pickable: true,
     colors: { primary: '#8a8478', secondary: '#5e594e' },
@@ -51,7 +51,7 @@ export const ITEM_DEFS: Record<
   ItemType,
   { colors: { primary: string; secondary: string } }
 > = {
-  berry: {
+  energy: {
     colors: { primary: '#e8c44f', secondary: '#a8862f' },
   },
 };

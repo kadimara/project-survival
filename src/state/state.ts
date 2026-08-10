@@ -23,7 +23,7 @@ import {
   TILE,
   TILE_DEFS,
 } from '../constants';
-import { buildMap, buildWalls, mulberry32 } from '../worldgen/worldgen';
+import { buildMap, buildStones, mulberry32 } from '../worldgen/worldgen';
 import { buildGroundAtlas, patchGroundAtlasTile } from '../render/ground-atlas';
 
 export function terrainWalkable(
@@ -161,15 +161,15 @@ export function placeGroundItemNear(
   return true;
 }
 
-// builds the noise-generated 'rock' layer via worldgen.ts's buildWalls (left
-// completely untouched), then adds one 'ore' tile near spawn purely so a
-// second tile type is visible/testable in-game — not part of procedural
-// generation, a fixed offset within buildWalls's own carved spawn-safety
+// builds the noise-generated 'stone' layer via worldgen.ts's buildStones
+// (left completely untouched), then adds one 'ore' tile near spawn purely so
+// a second tile type is visible/testable in-game — not part of procedural
+// generation, a fixed offset within buildStones's own carved spawn-safety
 // bubble guarantees it's always open ground and reachable
 function buildTiles(seed: number): Map<string, TileType> {
-  const keys = buildWalls(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
+  const keys = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
   const tiles = new Map<string, TileType>();
-  for (const key of keys) tiles.set(key, 'rock');
+  for (const key of keys) tiles.set(key, 'stone');
   tiles.set(SPAWN_X + 2 + ',' + SPAWN_Y, 'ore');
   return tiles;
 }
@@ -205,7 +205,7 @@ export function regenerateWorld(
   state.groundItems.clear();
   for (let i = 0; i < INITIAL_FOOD_COUNT; i++) {
     const s = randomOpenTile(state);
-    if (s) state.groundItems.set(s.x + ',' + s.y, { ...s, type: 'berry' });
+    if (s) state.groundItems.set(s.x + ',' + s.y, { ...s, type: 'energy' });
   }
   spawnEnemies(state);
 
@@ -275,7 +275,7 @@ export function createGameState(
   buildGroundAtlas(refs, map, tiles);
   for (let i = 0; i < INITIAL_FOOD_COUNT; i++) {
     const s = randomOpenTile(state);
-    if (s) state.groundItems.set(s.x + ',' + s.y, { ...s, type: 'berry' });
+    if (s) state.groundItems.set(s.x + ',' + s.y, { ...s, type: 'energy' });
   }
   spawnEnemies(state);
 

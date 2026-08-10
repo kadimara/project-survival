@@ -1,11 +1,11 @@
 // Grid pathfinding: 4-directional BFS shortest paths, BFS-to-adjacent (for
 // targets you can't stand on top of), and Bresenham line-of-sight.
-// `walkable`/`isWall` are passed in so this stays independent of any
+// `walkable`/`isSolid` are passed in so this stays independent of any
 // particular game's entity/terrain state.
 import type { Point } from '../types/types';
 
 export type Walkable = (x: number, y: number) => boolean;
-export type IsWall = (x: number, y: number) => boolean;
+export type IsSolid = (x: number, y: number) => boolean;
 
 export function isAdjacent(
   ax: number,
@@ -112,13 +112,13 @@ export function bfsToAdjacent(
   return path;
 }
 
-// true if no wall tile lies strictly between (ax,ay) and (bx,by)
+// true if no solid tile lies strictly between (ax,ay) and (bx,by)
 export function hasLineOfSight(
   ax: number,
   ay: number,
   bx: number,
   by: number,
-  isWall: IsWall,
+  isSolid: IsSolid,
 ): boolean {
   let x0 = ax,
     y0 = ay;
@@ -133,7 +133,7 @@ export function hasLineOfSight(
     if (
       !(x0 === ax && y0 === ay) &&
       !(x0 === x1 && y0 === y1) &&
-      isWall(x0, y0)
+      isSolid(x0, y0)
     )
       return false;
     if (x0 === x1 && y0 === y1) break;
