@@ -57,11 +57,13 @@ export function setTile(
   patchGroundAtlasTile(state.refs, state.map, x, y, state.tiles.get(key));
 }
 
-// writes `type` as the occupant at (x,y), clearing whichever of
-// state.tiles/state.groundItems currently holds the key first — needed
-// because a combine result can land in a different layer than either its
-// held or target inputs came from. Reuses setTile for the tile-layer case
-// so the ground atlas patch still happens.
+// writes `type` as the occupant at (x,y), first clearing whichever existing
+// occupant `type` is about to replace — needed because a combine result can
+// land in a different layer than either its held or target inputs came
+// from. A tile that doesn't block ground items (soil) is only cleared when
+// it's the tile layer itself being overwritten, so placing an item on top
+// of it leaves the tile in place. Reuses setTile for the tile-layer case so
+// the ground atlas patch still happens.
 export function setOccupant(
   state: GameState,
   x: number,
@@ -69,7 +71,11 @@ export function setOccupant(
   type: CarryType | null,
 ): void {
   const key = x + ',' + y;
-  if (state.tiles.has(key)) setTile(state, x, y, null);
+  const existingTile = state.tiles.get(key);
+  const tileBlocks =
+    existingTile !== undefined && TILE_DEFS[existingTile].blocksGroundItems;
+
+  if (tileBlocks) setTile(state, x, y, null);
   else state.groundItems.delete(key);
 
   if (type === null) return;
@@ -95,13 +101,36 @@ export function groundItemAt(
 
 // single occupancy check across both layers — replaces the repeated
 // `!isSolid(...) && !groundItemAt(...)` pattern that used to appear at
-// every call site that just needs to know "is anything here"
+// every call site that just needs to know "is anything here". For a tile
+// that doesn't block ground items (soil), an item sitting on top of it
+// takes priority over the tile itself, so combining/picking up targets the
+// item rather than the soil underneath.
 export function occupantAt(
   state: GameState,
   x: number,
   y: number,
 ): TileType | ItemType | null {
-  return tileAt(state, x, y) ?? groundItemAt(state, x, y)?.type ?? null;
+  const tile = tileAt(state, x, y);
+  if (tile !== undefined && TILE_DEFS[tile].blocksGroundItems) return tile;
+  return groundItemAt(state, x, y)?.type ?? tile ?? null;
+}
+
+// true when (x,y) is a tile that doesn't block ground items (soil) and
+// nothing is already sitting on top of it — the direct-placement slot a
+// ground item can drop into without going through the tile/combine check,
+// since occupantAt reports bare soil as occupied (so pickup/click routing
+// still finds it)
+export function openForGroundItem(
+  state: GameState,
+  x: number,
+  y: number,
+): boolean {
+  const tile = tileAt(state, x, y);
+  return (
+    tile !== undefined &&
+    !TILE_DEFS[tile].blocksGroundItems &&
+    !state.groundItems.has(x + ',' + y)
+  );
 }
 
 export function isEnemyAt(state: GameState, x: number, y: number): boolean {
@@ -183,15 +212,17 @@ export function placeGroundItemNear(
 }
 
 // builds the noise-generated 'stone' layer via worldgen.ts's buildStones
-// (left completely untouched), then adds one 'ore' tile near spawn purely so
-// a second tile type is visible/testable in-game — not part of procedural
-// generation, a fixed offset within buildStones's own carved spawn-safety
-// bubble guarantees it's always open ground and reachable
+// (left completely untouched), then adds one 'ore' tile and one 'soil' tile
+// near spawn purely so those tile types are visible/testable in-game — not
+// part of procedural generation, fixed offsets within buildStones's own
+// carved spawn-safety bubble guarantee they're always open ground and
+// reachable
 function buildTiles(seed: number): Map<string, TileType> {
   const keys = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
   const tiles = new Map<string, TileType>();
   for (const key of keys) tiles.set(key, 'stone');
   tiles.set(SPAWN_X + 2 + ',' + SPAWN_Y, 'ore');
+  tiles.set(SPAWN_X - 2 + ',' + SPAWN_Y, 'soil');
   return tiles;
 }
 

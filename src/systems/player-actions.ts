@@ -1,7 +1,7 @@
 // Player action resolution: movement, picking up/placing obstacles and
 // food, and attacking enemies. Raw key tracking (which keys are currently
 // held) lives in input/player-input.ts.
-import type { Dir, GameState, HudRefs, Point, TileType } from '../types/types';
+import type { Dir, GameState, HudRefs, ItemType, Point } from '../types/types';
 import {
   BASE_MOVE_DUR,
   carryColor,
@@ -14,6 +14,7 @@ import {
 import {
   isEnemyAt,
   occupantAt,
+  openForGroundItem,
   setOccupant,
   setTile,
   spawnFloatingText,
@@ -74,17 +75,29 @@ export function doPickup(
   y: number,
 ): void {
   const { player } = state;
-  const kind = occupantAt(state, x, y);
-  if (!kind) return;
   const key = x + ',' + y;
-  if (state.tiles.has(key)) {
-    if (!TILE_DEFS[kind as TileType].pickable) return;
-    setTile(state, x, y, null);
-  } else {
+
+  // a ground item (e.g. a crop on soil) sits on top of the tile layer, so it
+  // takes priority: picking up harvests the item and leaves the tile behind
+  const item = state.groundItems.get(key);
+  if (item) {
     state.groundItems.delete(key);
+    player.held = item.type;
+    spawnFloatingText(
+      state,
+      player,
+      'picked up ' + item.type,
+      carryColor(item.type),
+    );
+    updateHud(state, hud);
+    return;
   }
-  player.held = kind;
-  spawnFloatingText(state, player, 'picked up ' + kind, carryColor(kind));
+
+  const tile = state.tiles.get(key);
+  if (!tile || !TILE_DEFS[tile].pickable) return;
+  setTile(state, x, y, null);
+  player.held = tile;
+  spawnFloatingText(state, player, 'picked up ' + tile, carryColor(tile));
   updateHud(state, hud);
 }
 
@@ -98,6 +111,17 @@ export function doPlace(
   if (!terrainWalkable(state, x, y) || isEnemyAt(state, x, y) || !player.held)
     return;
   const held = player.held;
+
+  // soil doesn't block ground items, so a carried item drops straight onto
+  // it without needing an empty cell or a combine recipe
+  if (!(held in TILE_DEFS) && openForGroundItem(state, x, y)) {
+    state.groundItems.set(x + ',' + y, { x, y, type: held as ItemType });
+    spawnFloatingText(state, player, 'placed ' + held, '#ecdfc4');
+    player.held = null;
+    updateHud(state, hud);
+    return;
+  }
+
   const target = occupantAt(state, x, y);
 
   if (target === null) {
@@ -150,8 +174,12 @@ export function tryPlaceAt(
 ): void {
   const { player } = state;
   if (!terrainWalkable(state, x, y) || !player.held) return;
-  const target = occupantAt(state, x, y);
-  if (target !== null && tryCombine(player.held, target) === null) return;
+  const dropsOnSoil =
+    !(player.held in TILE_DEFS) && openForGroundItem(state, x, y);
+  if (!dropsOnSoil) {
+    const target = occupantAt(state, x, y);
+    if (target !== null && tryCombine(player.held, target) === null) return;
+  }
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
     doPlace(state, hud, x, y);
     return;
