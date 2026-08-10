@@ -1,14 +1,7 @@
 // Player action resolution: movement, picking up/placing obstacles and
 // food, and attacking enemies. Raw key tracking (which keys are currently
 // held) lives in input/player-input.ts.
-import type {
-  Dir,
-  GameState,
-  HudRefs,
-  ItemType,
-  Point,
-  TileType,
-} from '../types/types';
+import type { Dir, GameState, HudRefs, Point, TileType } from '../types/types';
 import {
   BASE_MOVE_DUR,
   carryColor,
@@ -21,6 +14,7 @@ import {
 import {
   isEnemyAt,
   occupantAt,
+  setOccupant,
   setTile,
   spawnFloatingText,
   terrainWalkable,
@@ -33,6 +27,7 @@ import {
   type Walkable,
 } from './pathfinding';
 import { killEnemy } from './combat';
+import { tryCombine } from './combine';
 import { updateHud } from '../ui/hud';
 
 // advances the player one tile onto open ground. Returns false if the tile
@@ -100,17 +95,29 @@ export function doPlace(
   y: number,
 ): void {
   const { player } = state;
-  if (
-    !terrainWalkable(state, x, y) ||
-    occupantAt(state, x, y) ||
-    isEnemyAt(state, x, y) ||
-    !player.held
-  )
+  if (!terrainWalkable(state, x, y) || isEnemyAt(state, x, y) || !player.held)
     return;
-  const kind = player.held;
-  if (kind in TILE_DEFS) setTile(state, x, y, kind as TileType);
-  else state.groundItems.set(x + ',' + y, { x, y, type: kind as ItemType });
-  spawnFloatingText(state, player, 'placed ' + kind, '#ecdfc4');
+  const held = player.held;
+  const target = occupantAt(state, x, y);
+
+  if (target === null) {
+    setOccupant(state, x, y, held);
+    spawnFloatingText(state, player, 'placed ' + held, '#ecdfc4');
+    player.held = null;
+    updateHud(state, hud);
+    return;
+  }
+
+  const resultType = tryCombine(held, target);
+  if (resultType === null) return; // occupied, no matching recipe: stays in hand
+
+  setOccupant(state, x, y, resultType);
+  spawnFloatingText(
+    state,
+    player,
+    'combined into ' + resultType,
+    carryColor(resultType),
+  );
   player.held = null;
   updateHud(state, hud);
 }
@@ -142,7 +149,9 @@ export function tryPlaceAt(
   walkable: (x: number, y: number) => boolean,
 ): void {
   const { player } = state;
-  if (!terrainWalkable(state, x, y) || occupantAt(state, x, y)) return;
+  if (!terrainWalkable(state, x, y) || !player.held) return;
+  const target = occupantAt(state, x, y);
+  if (target !== null && tryCombine(player.held, target) === null) return;
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
     doPlace(state, hud, x, y);
     return;
