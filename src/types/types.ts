@@ -19,7 +19,7 @@ export interface Point {
   y: number;
 }
 
-export type GrowthStage = 'small' | 'full';
+export type GrowthStage = 'small' | 'medium' | 'full';
 
 // entry in the ground-item layer; needs its own x/y since it's stored in a
 // position-keyed map alongside its key, for convenient per-frame iteration.

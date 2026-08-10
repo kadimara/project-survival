@@ -92,7 +92,9 @@ export function render(state: GameState, now: number): void {
     const size =
       item.stage === 'small'
         ? Math.max(2, Math.round(fullSize * 0.55))
-        : fullSize;
+        : item.stage === 'medium'
+          ? Math.max(3, Math.round(fullSize * 0.78))
+          : fullSize;
     const ix = sx + (TILE - size) / 2,
       iy = sy + (TILE - size) / 2;
     const { primary, secondary } = ITEM_DEFS[item.type].colors;

@@ -67,10 +67,11 @@ export const ITEM_DEFS: Record<
   },
 };
 
-// ---- soil farming: energy planted on soil starts small and grows to full
-// after ENERGY_GROW_MS; harvesting full regrows a new small planting on the
-// same cell, harvesting small consumes it with no regrow (systems/farming.ts) ----
-export const ENERGY_GROW_MS = 10000;
+// ---- soil farming: energy planted on soil starts small, advances to
+// medium then full, spending ENERGY_GROW_STAGE_MS at each step; harvesting
+// full regrows a new small planting on the same cell, harvesting small or
+// medium consumes it with no regrow (systems/farming.ts) ----
+export const ENERGY_GROW_STAGE_MS = 5000;
 
 // looks up the primary color for anything the player can carry, whichever
 // def table (TILE_DEFS or ITEM_DEFS) it belongs to
