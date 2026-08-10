@@ -60,10 +60,10 @@ export function setTile(
 // writes `type` as the occupant at (x,y), first clearing whichever existing
 // occupant `type` is about to replace — needed because a combine result can
 // land in a different layer than either its held or target inputs came
-// from. A tile that doesn't block ground items (soil) is only cleared when
-// it's the tile layer itself being overwritten, so placing an item on top
-// of it leaves the tile in place. Reuses setTile for the tile-layer case so
-// the ground atlas patch still happens.
+// from. A tile that allows a ground item on top of it (soil) is only
+// cleared when it's the tile layer itself being overwritten, so placing an
+// item on top of it leaves the tile in place. Reuses setTile for the
+// tile-layer case so the ground atlas patch still happens.
 export function setOccupant(
   state: GameState,
   x: number,
@@ -73,7 +73,7 @@ export function setOccupant(
   const key = x + ',' + y;
   const existingTile = state.tiles.get(key);
   const tileBlocks =
-    existingTile !== undefined && TILE_DEFS[existingTile].blocksGroundItems;
+    existingTile !== undefined && !TILE_DEFS[existingTile].allowGroundItem;
 
   if (tileBlocks) setTile(state, x, y, null);
   else state.groundItems.delete(key);
@@ -102,7 +102,7 @@ export function groundItemAt(
 // single occupancy check across both layers — replaces the repeated
 // `!isSolid(...) && !groundItemAt(...)` pattern that used to appear at
 // every call site that just needs to know "is anything here". For a tile
-// that doesn't block ground items (soil), an item sitting on top of it
+// that allows a ground item on top of it (soil), an item sitting there
 // takes priority over the tile itself, so combining/picking up targets the
 // item rather than the soil underneath.
 export function occupantAt(
@@ -111,12 +111,12 @@ export function occupantAt(
   y: number,
 ): TileType | ItemType | null {
   const tile = tileAt(state, x, y);
-  if (tile !== undefined && TILE_DEFS[tile].blocksGroundItems) return tile;
+  if (tile !== undefined && !TILE_DEFS[tile].allowGroundItem) return tile;
   return groundItemAt(state, x, y)?.type ?? tile ?? null;
 }
 
-// true when (x,y) is a tile that doesn't block ground items (soil) and
-// nothing is already sitting on top of it — the direct-placement slot a
+// true when (x,y) is a tile that allows a ground item on top of it (soil)
+// and nothing is already sitting there — the direct-placement slot a
 // ground item can drop into without going through the tile/combine check,
 // since occupantAt reports bare soil as occupied (so pickup/click routing
 // still finds it)
@@ -128,7 +128,7 @@ export function openForGroundItem(
   const tile = tileAt(state, x, y);
   return (
     tile !== undefined &&
-    !TILE_DEFS[tile].blocksGroundItems &&
+    TILE_DEFS[tile].allowGroundItem &&
     !state.groundItems.has(x + ',' + y)
   );
 }

@@ -25,34 +25,34 @@ export const INITIAL_FOOD_COUNT = 100;
 // ---- tile defs: the grid layer (solid, atlas-baked). pickable is checked
 // by doPickup — every current tile is pickable, but the flag exists so a
 // future non-pickable solid type (e.g. a boundary wall) has somewhere to
-// say so. blocksGroundItems marks whether the tile also occupies the
-// ground-item layer at its cell (stone/ore do; soil doesn't, so a ground
-// item — a planted crop — can sit on top of it) ----
+// say so. allowGroundItem marks whether the ground-item layer can also be
+// occupied at the tile's cell (soil does, so a ground item — a planted
+// crop — can sit on top of it; stone/ore don't) ----
 export const TILE_DEFS: Record<
   TileType,
   {
     solid: boolean;
     pickable: boolean;
-    blocksGroundItems: boolean;
+    allowGroundItem: boolean;
     colors: { primary: string; secondary: string };
   }
 > = {
   stone: {
     solid: true,
     pickable: true,
-    blocksGroundItems: true,
+    allowGroundItem: false,
     colors: { primary: '#8a8478', secondary: '#5e594e' },
   },
   ore: {
     solid: true,
     pickable: true,
-    blocksGroundItems: true,
+    allowGroundItem: false,
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
   soil: {
     solid: true,
     pickable: true,
-    blocksGroundItems: false,
+    allowGroundItem: true,
     colors: { primary: '#6b4a30', secondary: '#43301f' },
   },
 };
