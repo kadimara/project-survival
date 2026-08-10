@@ -16,7 +16,7 @@ import {
 } from '../constants';
 import { getClampedCamX, getClampedCamY } from './camera';
 import { tileAt } from '../state/state';
-import { drawHpBar, drawSquareEntity } from './rendering';
+import { drawHpBar, drawScatteredDots, drawSquareEntity } from './rendering';
 
 export function renderWorldMap(state: GameState): void {
   const { worldCanvas, worldCtx } = state.refs;
@@ -83,18 +83,28 @@ export function render(state: GameState, now: number): void {
     ctx.fill();
   }
 
+  // drawn before groundItems so a seed's scattered dots sit visually
+  // "under" the energy square it produces, when both are on the same cell
+  for (const seed of state.seeds.values()) {
+    const sx = seed.x * TILE - camX,
+      sy = seed.y * TILE - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    drawScatteredDots(ctx, sx, sy, ITEM_DEFS.energySeed.colors.primary);
+  }
+
   for (const item of state.groundItems.values()) {
     const sx = item.x * TILE - camX,
       sy = item.y * TILE - camY;
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
-    const fullSize = Math.max(4, Math.round(TILE * 0.4));
-    const size =
-      item.stage === 'small'
-        ? Math.max(2, Math.round(fullSize * 0.55))
-        : item.stage === 'medium'
-          ? Math.max(3, Math.round(fullSize * 0.78))
-          : fullSize;
+    // a wild (not-yet-planted) energySeed sitting loose on the ground
+    // renders the same as a planted one — scattered dots, not a square
+    if (item.type === 'energySeed') {
+      drawScatteredDots(ctx, sx, sy, ITEM_DEFS.energySeed.colors.primary);
+      continue;
+    }
+    const size = Math.max(4, Math.round(TILE * 0.4));
     const ix = sx + (TILE - size) / 2,
       iy = sy + (TILE - size) / 2;
     const { primary, secondary } = ITEM_DEFS[item.type].colors;

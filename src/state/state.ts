@@ -14,6 +14,7 @@ import type {
   TileType,
 } from '../types/types';
 import {
+  INITIAL_ENERGY_SEED_COUNT,
   INITIAL_FOOD_COUNT,
   INITIAL_SEED,
   MAP_H,
@@ -119,17 +120,21 @@ export function occupantAt(
 // and nothing is already sitting there — the direct-placement slot a
 // ground item can drop into without going through the tile/combine check,
 // since occupantAt reports bare soil as occupied (so pickup/click routing
-// still finds it)
+// still finds it). Also excludes a cell with a planted (not-yet-grown)
+// seed, which lives outside state.groundItems and would otherwise get
+// silently shadowed by a new drop.
 export function openForGroundItem(
   state: GameState,
   x: number,
   y: number,
 ): boolean {
+  const key = x + ',' + y;
   const tile = tileAt(state, x, y);
   return (
     tile !== undefined &&
     TILE_DEFS[tile].allowGroundItem &&
-    !state.groundItems.has(x + ',' + y)
+    !state.groundItems.has(key) &&
+    !state.seeds.has(key)
   );
 }
 
@@ -211,6 +216,16 @@ export function placeGroundItemNear(
   return true;
 }
 
+// scatters `count` wild ground items of `type` across random open tiles —
+// shared by the wild-energy and wild-energySeed seeding loops below, since
+// both createGameState and regenerateWorld need to run each twice
+function seedWildItems(state: GameState, count: number, type: ItemType): void {
+  for (let i = 0; i < count; i++) {
+    const s = randomOpenTile(state);
+    if (s) state.groundItems.set(s.x + ',' + s.y, { ...s, type });
+  }
+}
+
 // builds the noise-generated 'stone' layer via worldgen.ts's buildStones
 // (left completely untouched), then adds one 'ore' tile and one 'soil' tile
 // near spawn purely so those tile types are visible/testable in-game — not
@@ -255,10 +270,9 @@ export function regenerateWorld(
   state.tiles = buildTiles(newSeed);
   buildGroundAtlas(state.refs, state.map, state.tiles);
   state.groundItems.clear();
-  for (let i = 0; i < INITIAL_FOOD_COUNT; i++) {
-    const s = randomOpenTile(state);
-    if (s) state.groundItems.set(s.x + ',' + s.y, { ...s, type: 'energy' });
-  }
+  state.seeds.clear();
+  seedWildItems(state, INITIAL_FOOD_COUNT, 'energy');
+  seedWildItems(state, INITIAL_ENERGY_SEED_COUNT, 'energySeed');
   spawnEnemies(state);
 
   const { player } = state;
@@ -292,6 +306,7 @@ export function createGameState(
     map,
     tiles,
     groundItems: new Map(),
+    seeds: new Map(),
     enemies: [],
     player: {
       tileX: SPAWN_X,
@@ -325,10 +340,8 @@ export function createGameState(
   };
 
   buildGroundAtlas(refs, map, tiles);
-  for (let i = 0; i < INITIAL_FOOD_COUNT; i++) {
-    const s = randomOpenTile(state);
-    if (s) state.groundItems.set(s.x + ',' + s.y, { ...s, type: 'energy' });
-  }
+  seedWildItems(state, INITIAL_FOOD_COUNT, 'energy');
+  seedWildItems(state, INITIAL_ENERGY_SEED_COUNT, 'energySeed');
   spawnEnemies(state);
 
   return state;

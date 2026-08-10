@@ -43,6 +43,28 @@ export function drawObstacle(
   ctx.fillRect(sx + m2, sy + m2, TILE - m2 * 2, TILE - m2 * 2);
 }
 
+// three fixed dots scattered around a tile, avoiding the dead center where
+// a regular item's centered square would render — used for a planted seed
+// (see farming.ts) so it stays visually distinct even when an energy item
+// it produced sits on the same cell
+const SCATTERED_DOT_OFFSETS: [number, number][] = [
+  [3, 3],
+  [12, 4],
+  [6, 12],
+];
+
+export function drawScatteredDots(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  color: string,
+): void {
+  ctx.fillStyle = color;
+  for (const [ox, oy] of SCATTERED_DOT_OFFSETS) {
+    ctx.fillRect(sx + ox, sy + oy, 1, 1);
+  }
+}
+
 export function drawSquareEntity(
   ctx: CanvasRenderingContext2D,
   TILE: number,

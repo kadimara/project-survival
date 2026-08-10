@@ -11,7 +11,7 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
 // constants.ts). Items are the ground layer: loose, drawn per-frame, sit on
 // top of terrain rather than being part of the grid (see ITEM_DEFS).
 export type TileType = 'stone' | 'ore' | 'soil';
-export type ItemType = 'energy';
+export type ItemType = 'energy' | 'energySeed';
 export type CarryType = TileType | ItemType;
 
 export interface Point {
@@ -19,16 +19,17 @@ export interface Point {
   y: number;
 }
 
-export type GrowthStage = 'small' | 'medium' | 'full';
-
 // entry in the ground-item layer; needs its own x/y since it's stored in a
-// position-keyed map alongside its key, for convenient per-frame iteration.
-// stage/readyAt are only set for soil-planted energy (see systems/farming.ts)
-// — undefined means a plain one-shot item, same as before growth existed.
+// position-keyed map alongside its key, for convenient per-frame iteration
 export interface GroundItem extends Point {
   type: ItemType;
-  stage?: GrowthStage;
-  readyAt?: number;
+}
+
+// a seed planted on soil, tracked separately from state.groundItems so an
+// energySeed and the energy it periodically spawns can occupy the same
+// cell at once (see systems/farming.ts)
+export interface PlantedSeed extends Point {
+  readyAt: number;
 }
 
 export interface ZoomLevel {
@@ -123,6 +124,7 @@ export interface GameState {
   map: number[][];
   tiles: Map<string, TileType>;
   groundItems: Map<string, GroundItem>;
+  seeds: Map<string, PlantedSeed>;
   enemies: Enemy[];
   player: Player;
   floatingTexts: FloatingText[];

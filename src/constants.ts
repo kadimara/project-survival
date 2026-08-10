@@ -21,6 +21,7 @@ export const DEFAULT_ZOOM_INDEX = 1;
 
 export const WORLD_TILE = 4;
 export const INITIAL_FOOD_COUNT = 100;
+export const INITIAL_ENERGY_SEED_COUNT = 10;
 
 // ---- tile defs: the grid layer (solid, atlas-baked). pickable is checked
 // by doPickup — every current tile is pickable, but the flag exists so a
@@ -65,13 +66,19 @@ export const ITEM_DEFS: Record<
   energy: {
     colors: { primary: '#e8c44f', secondary: '#a8862f' },
   },
+  // same colors as energy on purpose — a planted seed and the energy it
+  // grows are distinguished by render shape (scattered dots vs a solid
+  // square, see render.ts), not by color
+  energySeed: {
+    colors: { primary: '#e8c44f', secondary: '#a8862f' },
+  },
 };
 
-// ---- soil farming: energy planted on soil starts small, advances to
-// medium then full, spending ENERGY_GROW_STAGE_MS at each step; harvesting
-// full regrows a new small planting on the same cell, harvesting small or
-// medium consumes it with no regrow (systems/farming.ts) ----
-export const ENERGY_GROW_STAGE_MS = 5000;
+// ---- soil farming: an energySeed planted on soil spawns an energy item on
+// the same cell after ENERGY_SEED_GROW_MS (if the cell doesn't already have
+// one); harvesting that energy restarts the seed's timer, so a seed keeps
+// producing renewably as long as it's kept picked (systems/farming.ts) ----
+export const ENERGY_SEED_GROW_MS = 10000;
 
 // looks up the primary color for anything the player can carry, whichever
 // def table (TILE_DEFS or ITEM_DEFS) it belongs to

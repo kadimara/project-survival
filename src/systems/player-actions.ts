@@ -5,6 +5,7 @@ import type { Dir, GameState, HudRefs, ItemType, Point } from '../types/types';
 import {
   BASE_MOVE_DUR,
   carryColor,
+  ENERGY_SEED_GROW_MS,
   PLAYER_ATK_COOLDOWN,
   PLAYER_ATK_DAMAGE,
   PLAYER_CARRY_MOVE_DUR,
@@ -29,7 +30,7 @@ import {
 } from './pathfinding';
 import { killEnemy } from './combat';
 import { tryCombine } from './combine';
-import { plantGrowingItem } from './farming';
+import { plantSeed } from './farming';
 import { updateHud } from '../ui/hud';
 
 // advances the player one tile onto open ground. Returns false if the tile
@@ -78,23 +79,39 @@ export function doPickup(
   const { player } = state;
   const key = x + ',' + y;
 
-  // a ground item (e.g. a crop on soil) sits on top of the tile layer, so it
-  // takes priority: picking up harvests the item and leaves the tile behind
+  // a ground item (e.g. energy a seed grew) sits on top of the tile layer,
+  // so it takes priority: picking up harvests the item and leaves the tile
+  // (and any seed underneath it) behind
   const item = state.groundItems.get(key);
   if (item) {
     state.groundItems.delete(key);
     player.held = item.type;
-    // a fully-grown planting regrows a fresh small one on the same soil
-    // cell; harvesting early (still small) or a wild/death-drop item
-    // (no stage) just gives the energy with nothing left behind
-    if (item.stage === 'full') {
-      plantGrowingItem(state, x, y, item.type, performance.now());
-    }
+    // harvesting the energy a seed produced restarts its grow timer, so
+    // the same seed keeps producing as long as it's kept picked
+    const producingSeed = state.seeds.get(key);
+    if (producingSeed)
+      producingSeed.readyAt = performance.now() + ENERGY_SEED_GROW_MS;
     spawnFloatingText(
       state,
       player,
       'picked up ' + item.type,
       carryColor(item.type),
+    );
+    updateHud(state, hud);
+    return;
+  }
+
+  // no loose item here — a bare (not-yet-grown, or already-harvested)
+  // planted seed is reachable and pickable in its own right
+  const seed = state.seeds.get(key);
+  if (seed) {
+    state.seeds.delete(key);
+    player.held = 'energySeed';
+    spawnFloatingText(
+      state,
+      player,
+      'picked up energySeed',
+      carryColor('energySeed'),
     );
     updateHud(state, hud);
     return;
@@ -120,10 +137,15 @@ export function doPlace(
   const held = player.held;
 
   // soil doesn't block ground items, so a carried item drops straight onto
-  // it without needing an empty cell or a combine recipe, planted as a
-  // small growing item rather than a plain one-shot pickup
+  // it without needing an empty cell or a combine recipe. An energySeed
+  // gets planted (tracked separately, see systems/farming.ts); anything
+  // else just sits there as a plain loose item, same as any other ground
   if (!(held in TILE_DEFS) && openForGroundItem(state, x, y)) {
-    plantGrowingItem(state, x, y, held as ItemType, performance.now());
+    if (held === 'energySeed') {
+      plantSeed(state, x, y, performance.now());
+    } else {
+      state.groundItems.set(x + ',' + y, { x, y, type: held as ItemType });
+    }
     spawnFloatingText(state, player, 'placed ' + held, '#ecdfc4');
     player.held = null;
     updateHud(state, hud);
