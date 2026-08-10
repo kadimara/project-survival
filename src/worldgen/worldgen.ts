@@ -1,4 +1,4 @@
-// World generation: seeded RNG, simplex noise, and the procedural cave-wall
+// World generation: seeded RNG, simplex noise, and the procedural cave-stone
 // pass that turns noise into a walkable/solid tile map.
 
 export type Rng = () => number;
@@ -142,17 +142,17 @@ export function buildMap(mapW: number, mapH: number): number[][] {
   return map;
 }
 
-// generates the solid-wall set for a mapW x mapH cave from fbm noise, then
+// generates the solid-stone set for a mapW x mapH cave from fbm noise, then
 // carves out a safety bubble around the spawn point so the player never
-// spawns sealed inside solid rock
-export function buildWalls(
+// spawns sealed inside solid stone
+export function buildStones(
   seed: number,
   mapW: number,
   mapH: number,
   spawnX: number,
   spawnY: number,
 ): Set<string> {
-  const walls = new Set<string>();
+  const stones = new Set<string>();
   const noise2D = makeSimplex2D(seed);
   const { scale, octaves, persistence, lacunarity, threshold } = CAVE_PRESET;
   // direct 1:1 mapping: one noise sample per tile. Walkable below the
@@ -161,12 +161,12 @@ export function buildWalls(
   for (let y = 0; y < mapH; y++) {
     for (let x = 0; x < mapW; x++) {
       const n = fbm(noise2D, x, y, octaves, persistence, lacunarity, scale);
-      if (n >= threshold) walls.add(x + ',' + y);
+      if (n >= threshold) stones.add(x + ',' + y);
     }
   }
   const carve = (x: number, y: number) => {
     if (x > 0 && y > 0 && x < mapW - 1 && y < mapH - 1)
-      walls.delete(x + ',' + y);
+      stones.delete(x + ',' + y);
   };
   const SPAWN_SAFETY_R = 3;
   for (let y = spawnY - SPAWN_SAFETY_R; y <= spawnY + SPAWN_SAFETY_R; y++) {
@@ -175,5 +175,5 @@ export function buildWalls(
         carve(x, y);
     }
   }
-  return walls;
+  return stones;
 }

@@ -23,7 +23,7 @@ export function killEnemy(state: GameState, hud: HudRefs, enemy: Enemy): void {
     'defeated!',
     '#c1633c',
   );
-  placeGroundItemNear(state, enemy.tileX, enemy.tileY, 'berry');
+  placeGroundItemNear(state, enemy.tileX, enemy.tileY, 'energy');
   updateHud(state, hud);
 }
 
@@ -59,7 +59,7 @@ export function damagePlayer(
   spawnFloatingText(state, player, '-' + amount, '#e05c5c');
   updateHud(state, hud);
   if (player.hp <= 0) {
-    placeGroundItemNear(state, player.tileX, player.tileY, 'berry');
+    placeGroundItemNear(state, player.tileX, player.tileY, 'energy');
     showToast(hud, 'You were defeated — respawning');
     respawnPlayer(state, hud, now);
     return;
