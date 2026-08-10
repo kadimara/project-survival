@@ -31,6 +31,7 @@ import {
 import { killEnemy } from './combat';
 import { tryCombine } from './combine';
 import { plantSeed } from './farming';
+import { dumpInFurnace } from './smelting';
 import { updateHud } from '../ui/hud';
 
 // advances the player one tile onto open ground. Returns false if the tile
@@ -101,6 +102,22 @@ export function doPickup(
     return;
   }
 
+  // an item mid-smelt/mid-melt on a furnace can be reclaimed as-is any
+  // time before its timer fires, canceling the job
+  const job = state.smelters.get(key);
+  if (job) {
+    state.smelters.delete(key);
+    player.held = job.item;
+    spawnFloatingText(
+      state,
+      player,
+      'picked up ' + job.item,
+      carryColor(job.item),
+    );
+    updateHud(state, hud);
+    return;
+  }
+
   // no loose item here — a bare (not-yet-grown, or already-harvested)
   // planted seed is reachable and pickable in its own right
   const seed = state.seeds.get(key);
@@ -136,17 +153,36 @@ export function doPlace(
     return;
   const held = player.held;
 
-  // soil doesn't block ground items, so a carried item drops straight onto
-  // it without needing an empty cell or a combine recipe. An energySeed
-  // gets planted (tracked separately, see systems/farming.ts); anything
-  // else just sits there as a plain loose item, same as any other ground
+  // soil and furnace both allow a ground item to drop straight onto them
+  // without needing an empty cell or a combine recipe. A furnace dump is
+  // consumed — what's left depends on the item, see systems/smelting.ts.
+  // On soil, an energySeed gets planted (tracked separately, see
+  // systems/farming.ts) and anything else just sits there as a plain loose
+  // item, same as any other ground item.
   if (!(held in TILE_DEFS) && openForGroundItem(state, x, y)) {
-    if (held === 'energySeed') {
-      plantSeed(state, x, y, performance.now());
+    const item = held as ItemType;
+    if (state.tiles.get(x + ',' + y) === 'furnace') {
+      const outcome = dumpInFurnace(state, x, y, item, performance.now());
+      const text =
+        outcome === 'smelting'
+          ? 'smelting ' + item
+          : outcome === 'survived'
+            ? 'placed ' + item
+            : 'melting ' + item;
+      spawnFloatingText(
+        state,
+        player,
+        text,
+        outcome === 'destroyed' ? '#ff6b35' : carryColor(item),
+      );
     } else {
-      state.groundItems.set(x + ',' + y, { x, y, type: held as ItemType });
+      if (item === 'energySeed') {
+        plantSeed(state, x, y, performance.now());
+      } else {
+        state.groundItems.set(x + ',' + y, { x, y, type: item });
+      }
+      spawnFloatingText(state, player, 'placed ' + item, '#ecdfc4');
     }
-    spawnFloatingText(state, player, 'placed ' + held, '#ecdfc4');
     player.held = null;
     updateHud(state, hud);
     return;

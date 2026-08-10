@@ -18,7 +18,11 @@ export function patchGroundAtlasTile(
 ): void {
   const sx = x * TILE,
     sy = y * TILE;
-  if (type) drawObstacle(refs.groundAtlasCtx, TILE, sx, sy, type);
+  // the furnace body bakes in as plain stone — only its firebox glow is
+  // drawn per-frame on top, so it can flicker (see render.ts)
+  if (type === 'furnace')
+    drawObstacle(refs.groundAtlasCtx, TILE, sx, sy, 'stone');
+  else if (type) drawObstacle(refs.groundAtlasCtx, TILE, sx, sy, type);
   else drawTile(refs.groundAtlasCtx, TILE, map[y][x], sx, sy);
 }
 

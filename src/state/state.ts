@@ -15,7 +15,6 @@ import type {
 } from '../types/types';
 import {
   INITIAL_ENERGY_SEED_COUNT,
-  INITIAL_FOOD_COUNT,
   INITIAL_SEED,
   MAP_H,
   MAP_W,
@@ -55,6 +54,8 @@ export function setTile(
   } else {
     state.tiles.delete(key);
   }
+  if (type === 'furnace') state.furnaces.set(key, { x, y });
+  else state.furnaces.delete(key);
   patchGroundAtlasTile(state.refs, state.map, x, y, state.tiles.get(key));
 }
 
@@ -116,13 +117,14 @@ export function occupantAt(
   return groundItemAt(state, x, y)?.type ?? tile ?? null;
 }
 
-// true when (x,y) is a tile that allows a ground item on top of it (soil)
-// and nothing is already sitting there — the direct-placement slot a
-// ground item can drop into without going through the tile/combine check,
-// since occupantAt reports bare soil as occupied (so pickup/click routing
-// still finds it). Also excludes a cell with a planted (not-yet-grown)
-// seed, which lives outside state.groundItems and would otherwise get
-// silently shadowed by a new drop.
+// true when (x,y) is a tile that allows a ground item on top of it (soil,
+// furnace) and nothing is already sitting there — the direct-placement
+// slot a ground item can drop into without going through the tile/combine
+// check, since occupantAt reports a bare allowGroundItem tile as occupied
+// (so pickup/click routing still finds it). Also excludes a cell with a
+// planted (not-yet-grown) seed or an in-progress furnace job, both of
+// which live outside state.groundItems and would otherwise get silently
+// shadowed by a new drop.
 export function openForGroundItem(
   state: GameState,
   x: number,
@@ -134,7 +136,8 @@ export function openForGroundItem(
     tile !== undefined &&
     TILE_DEFS[tile].allowGroundItem &&
     !state.groundItems.has(key) &&
-    !state.seeds.has(key)
+    !state.seeds.has(key) &&
+    !state.smelters.has(key)
   );
 }
 
@@ -226,17 +229,27 @@ function seedWildItems(state: GameState, count: number, type: ItemType): void {
   }
 }
 
+// one ore ground item sitting on the extra 'stone' tile buildTiles adds
+// near spawn (see its comment) — purely so ore is visible/testable in-game,
+// not part of procedural generation
+function placeSpawnOre(state: GameState): void {
+  const x = SPAWN_X + 2,
+    y = SPAWN_Y;
+  state.groundItems.set(x + ',' + y, { x, y, type: 'ore' });
+}
+
 // builds the noise-generated 'stone' layer via worldgen.ts's buildStones
-// (left completely untouched), then adds one 'ore' tile and one 'soil' tile
-// near spawn purely so those tile types are visible/testable in-game — not
-// part of procedural generation, fixed offsets within buildStones's own
-// carved spawn-safety bubble guarantee they're always open ground and
-// reachable
+// (left completely untouched), then adds one extra 'stone' tile (for the
+// ore ground item placed on top of it, see createGameState/regenerateWorld)
+// and one 'soil' tile near spawn purely so those types are visible/testable
+// in-game — not part of procedural generation, fixed offsets within
+// buildStones's own carved spawn-safety bubble guarantee they're always
+// open ground and reachable
 function buildTiles(seed: number): Map<string, TileType> {
   const keys = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
   const tiles = new Map<string, TileType>();
   for (const key of keys) tiles.set(key, 'stone');
-  tiles.set(SPAWN_X + 2 + ',' + SPAWN_Y, 'ore');
+  tiles.set(SPAWN_X + 2 + ',' + SPAWN_Y, 'stone');
   tiles.set(SPAWN_X - 2 + ',' + SPAWN_Y, 'soil');
   return tiles;
 }
@@ -271,8 +284,10 @@ export function regenerateWorld(
   buildGroundAtlas(state.refs, state.map, state.tiles);
   state.groundItems.clear();
   state.seeds.clear();
-  seedWildItems(state, INITIAL_FOOD_COUNT, 'energy');
+  state.smelters.clear();
+  state.furnaces.clear();
   seedWildItems(state, INITIAL_ENERGY_SEED_COUNT, 'energySeed');
+  placeSpawnOre(state);
   spawnEnemies(state);
 
   const { player } = state;
@@ -307,6 +322,8 @@ export function createGameState(
     tiles,
     groundItems: new Map(),
     seeds: new Map(),
+    smelters: new Map(),
+    furnaces: new Map(),
     enemies: [],
     player: {
       tileX: SPAWN_X,
@@ -340,8 +357,8 @@ export function createGameState(
   };
 
   buildGroundAtlas(refs, map, tiles);
-  seedWildItems(state, INITIAL_FOOD_COUNT, 'energy');
   seedWildItems(state, INITIAL_ENERGY_SEED_COUNT, 'energySeed');
+  placeSpawnOre(state);
   spawnEnemies(state);
 
   return state;

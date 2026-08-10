@@ -4,7 +4,7 @@
 // entity/state model.
 import { DIRT, DIRT2 } from '../worldgen/worldgen';
 import { TILE_DEFS } from '../constants';
-import type { TileType } from '../types/types';
+import type { ItemType, TileType } from '../types/types';
 
 export const COLORS: Record<number, [string, string]> = {
   [DIRT]: ['#4a331d', '#402c19'],
@@ -48,10 +48,89 @@ export function drawObstacle(
 // (see farming.ts) so it stays visually distinct even when an energy item
 // it produced sits on the same cell
 const SCATTERED_DOT_OFFSETS: [number, number][] = [
-  [3, 3],
-  [12, 4],
-  [6, 12],
+  [5, 5],
+  [10, 5],
+  [7, 10],
 ];
+
+// furnace: the body bakes into the ground atlas as a plain stone tile (see
+// ground-atlas.ts, which draws it via drawObstacle(..., 'stone')) — only
+// the firebox glow below is drawn fresh each frame, over that baked body,
+// so it can flicker
+const FURNACE_GLOW_DIM: [number, number, number] = [196, 90, 48];
+const FURNACE_GLOW_BRIGHT: [number, number, number] = [255, 210, 130];
+
+function lerpColor(
+  c1: [number, number, number],
+  c2: [number, number, number],
+  t: number,
+): string {
+  const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+  const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+  const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+// two out-of-phase sine waves so the flicker doesn't read as a metronome;
+// `seed` offsets the phase per-furnace so several don't pulse in lockstep
+function flickerT(now: number, seed: number): number {
+  const a = Math.sin(now / 140 + seed) * 0.5 + 0.5;
+  const b = Math.sin(now / 55 + seed * 1.7) * 0.5 + 0.5;
+  return a * 0.65 + b * 0.35;
+}
+
+// firebox opening: a square glowing mouth centered on the furnace body,
+// like a lit hearth — the rim stays a fixed ember color, only the core
+// flickers
+export function drawFurnaceGlow(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  now: number,
+  seed: number,
+): void {
+  const { primary } = TILE_DEFS.furnace.colors;
+  // kept even so (TILE - outer) / 2 divides evenly — an odd outer would
+  // round the left/right centering offsets unevenly by a pixel
+  const outerRaw = Math.max(4, Math.round(TILE * 0.7));
+  const outer = outerRaw - (outerRaw % 2);
+  const ox = sx + (TILE - outer) / 2;
+  const oy = sy + (TILE - outer) / 2;
+  ctx.fillStyle = primary;
+  ctx.fillRect(ox, oy, outer, outer);
+  ctx.fillStyle = lerpColor(
+    FURNACE_GLOW_DIM,
+    FURNACE_GLOW_BRIGHT,
+    flickerT(now, seed),
+  );
+  const core = Math.max(2, outer - 4);
+  const inset = (outer - core) / 2;
+  ctx.fillRect(ox + inset, oy + inset, core, core);
+}
+
+// ore ground item: a handful of bigger flecks scattered across the cell —
+// the same "loose dots" idea as a planted seed (drawScatteredDots below)
+// but chunkier, since ore sits on top of whatever stone tile it was mined
+// from rather than drawing its own tile background
+const ORE_DOT_OFFSETS: [number, number, number][] = [
+  [2, 2, 5],
+  [10, 2, 3],
+  [3, 10, 3],
+  [10, 9, 5],
+];
+
+export function drawOreDots(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  color: string,
+): void {
+  ctx.fillStyle = color;
+  for (const [ox, oy, size] of ORE_DOT_OFFSETS) {
+    ctx.fillRect(sx + ox, sy + oy, size, size);
+  }
+}
 
 export function drawScatteredDots(
   ctx: CanvasRenderingContext2D,
@@ -61,8 +140,36 @@ export function drawScatteredDots(
 ): void {
   ctx.fillStyle = color;
   for (const [ox, oy] of SCATTERED_DOT_OFFSETS) {
-    ctx.fillRect(sx + ox, sy + oy, 1, 1);
+    ctx.fillRect(sx + ox, sy + oy, 2, 2);
   }
+}
+
+// draws whichever visual `type` uses as a loose item — shared by
+// state.groundItems and an in-progress furnace job (state.smelters) so a
+// job renders exactly like the item it started from, see render.ts
+export function drawItemIcon(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  type: ItemType,
+  colors: { primary: string; secondary: string },
+): void {
+  if (type === 'energySeed') {
+    drawScatteredDots(ctx, sx, sy, colors.primary);
+    return;
+  }
+  if (type === 'ore') {
+    drawOreDots(ctx, sx, sy, colors.primary);
+    return;
+  }
+  const size = Math.max(4, Math.round(TILE * 0.4));
+  const ix = sx + (TILE - size) / 2,
+    iy = sy + (TILE - size) / 2;
+  ctx.fillStyle = colors.secondary;
+  ctx.fillRect(ix - 1, iy - 1, size + 2, size + 2);
+  ctx.fillStyle = colors.primary;
+  ctx.fillRect(ix, iy, size, size);
 }
 
 export function drawSquareEntity(

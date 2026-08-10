@@ -10,8 +10,8 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
 // tiles are the grid layer: solid, atlas-baked (see TILE_DEFS in
 // constants.ts). Items are the ground layer: loose, drawn per-frame, sit on
 // top of terrain rather than being part of the grid (see ITEM_DEFS).
-export type TileType = 'stone' | 'ore' | 'soil';
-export type ItemType = 'energy' | 'energySeed';
+export type TileType = 'stone' | 'soil' | 'furnace';
+export type ItemType = 'energy' | 'energySeed' | 'ingot' | 'ore';
 export type CarryType = TileType | ItemType;
 
 export interface Point {
@@ -29,6 +29,16 @@ export interface GroundItem extends Point {
 // energySeed and the energy it periodically spawns can occupy the same
 // cell at once (see systems/farming.ts)
 export interface PlantedSeed extends Point {
+  readyAt: number;
+}
+
+// an item dumped on a furnace tile, tracked separately from
+// state.groundItems for the same reason as PlantedSeed — see
+// systems/smelting.ts. The player can pick the original `item` back up any
+// time before readyAt; once it passes, the job resolves (smelts, survives,
+// or is destroyed) and the entry is removed either way — no re-arming.
+export interface Smelter extends Point {
+  item: ItemType;
   readyAt: number;
 }
 
@@ -125,6 +135,11 @@ export interface GameState {
   tiles: Map<string, TileType>;
   groundItems: Map<string, GroundItem>;
   seeds: Map<string, PlantedSeed>;
+  smelters: Map<string, Smelter>;
+  // positions of every furnace tile, kept in sync by setTile — lets the
+  // per-frame render loop draw the flickering firebox glow (render.ts)
+  // without scanning the whole state.tiles map every frame
+  furnaces: Map<string, Point>;
   enemies: Enemy[];
   player: Player;
   floatingTexts: FloatingText[];
