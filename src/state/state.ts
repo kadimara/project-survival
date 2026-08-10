@@ -5,6 +5,7 @@
 // import cycle (entities/entities.ts imports randomOpenTile from here, one
 // direction only).
 import type {
+  CarryType,
   GameRefs,
   GameState,
   GroundItem,
@@ -54,6 +55,26 @@ export function setTile(
     state.tiles.delete(key);
   }
   patchGroundAtlasTile(state.refs, state.map, x, y, state.tiles.get(key));
+}
+
+// writes `type` as the occupant at (x,y), clearing whichever of
+// state.tiles/state.groundItems currently holds the key first — needed
+// because a combine result can land in a different layer than either its
+// held or target inputs came from. Reuses setTile for the tile-layer case
+// so the ground atlas patch still happens.
+export function setOccupant(
+  state: GameState,
+  x: number,
+  y: number,
+  type: CarryType | null,
+): void {
+  const key = x + ',' + y;
+  if (state.tiles.has(key)) setTile(state, x, y, null);
+  else state.groundItems.delete(key);
+
+  if (type === null) return;
+  if (type in TILE_DEFS) setTile(state, x, y, type as TileType);
+  else state.groundItems.set(key, { x, y, type: type as ItemType });
 }
 
 export function tileAt(
