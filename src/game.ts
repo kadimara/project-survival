@@ -35,6 +35,7 @@ import {
 } from './systems/player-actions';
 import { heldDir, setupPlayerInput } from './input/player-input';
 import { updateEnemy } from './systems/ai';
+import { updateGrowth } from './systems/farming';
 import { createHudRefs, enableDragPan, setMapOpen, updateHud } from './ui/hud';
 import { render, renderWorldMap } from './render/render';
 
@@ -229,6 +230,7 @@ export function initColonyGame(): void {
       }
     }
 
+    updateGrowth(state, now);
     for (const enemy of state.enemies)
       updateEnemy(state, hud, enemy, now, walkableFn);
 

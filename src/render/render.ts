@@ -88,7 +88,11 @@ export function render(state: GameState, now: number): void {
       sy = item.y * TILE - camY;
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
-    const size = Math.max(4, Math.round(TILE * 0.4));
+    const fullSize = Math.max(4, Math.round(TILE * 0.4));
+    const size =
+      item.stage === 'small'
+        ? Math.max(2, Math.round(fullSize * 0.55))
+        : fullSize;
     const ix = sx + (TILE - size) / 2,
       iy = sy + (TILE - size) / 2;
     const { primary, secondary } = ITEM_DEFS[item.type].colors;

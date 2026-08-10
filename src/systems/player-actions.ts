@@ -29,6 +29,7 @@ import {
 } from './pathfinding';
 import { killEnemy } from './combat';
 import { tryCombine } from './combine';
+import { plantGrowingItem } from './farming';
 import { updateHud } from '../ui/hud';
 
 // advances the player one tile onto open ground. Returns false if the tile
@@ -83,6 +84,12 @@ export function doPickup(
   if (item) {
     state.groundItems.delete(key);
     player.held = item.type;
+    // a fully-grown planting regrows a fresh small one on the same soil
+    // cell; harvesting early (still small) or a wild/death-drop item
+    // (no stage) just gives the energy with nothing left behind
+    if (item.stage === 'full') {
+      plantGrowingItem(state, x, y, item.type, performance.now());
+    }
     spawnFloatingText(
       state,
       player,
@@ -113,9 +120,10 @@ export function doPlace(
   const held = player.held;
 
   // soil doesn't block ground items, so a carried item drops straight onto
-  // it without needing an empty cell or a combine recipe
+  // it without needing an empty cell or a combine recipe, planted as a
+  // small growing item rather than a plain one-shot pickup
   if (!(held in TILE_DEFS) && openForGroundItem(state, x, y)) {
-    state.groundItems.set(x + ',' + y, { x, y, type: held as ItemType });
+    plantGrowingItem(state, x, y, held as ItemType, performance.now());
     spawnFloatingText(state, player, 'placed ' + held, '#ecdfc4');
     player.held = null;
     updateHud(state, hud);

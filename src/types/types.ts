@@ -19,10 +19,16 @@ export interface Point {
   y: number;
 }
 
+export type GrowthStage = 'small' | 'full';
+
 // entry in the ground-item layer; needs its own x/y since it's stored in a
-// position-keyed map alongside its key, for convenient per-frame iteration
+// position-keyed map alongside its key, for convenient per-frame iteration.
+// stage/readyAt are only set for soil-planted energy (see systems/farming.ts)
+// — undefined means a plain one-shot item, same as before growth existed.
 export interface GroundItem extends Point {
   type: ItemType;
+  stage?: GrowthStage;
+  readyAt?: number;
 }
 
 export interface ZoomLevel {
