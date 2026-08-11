@@ -313,7 +313,7 @@ export function regenerateWorld(
   player.px = SPAWN_X * TILE;
   player.py = SPAWN_Y * TILE;
   player.hp = player.maxHp;
-  player.invulnUntil = 0;
+  player.flashUntil = 0;
 }
 
 export function createGameState(
@@ -357,7 +357,7 @@ export function createGameState(
       lastAttack: 0,
       hp: PLAYER_MAX_HP,
       maxHp: PLAYER_MAX_HP,
-      invulnUntil: 0,
+      flashUntil: 0,
     },
     floatingTexts: [],
     zoomIndex: 0,

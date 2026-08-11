@@ -5,6 +5,8 @@
 // instead) so there's no import cycle between the two.
 import type { Actor, Dir, Enemy, GameState, Point } from '../types/types';
 import {
+  DUMMY_SPAWN_DX,
+  DUMMY_SPAWN_DY,
   ENEMY_COUNT,
   ENEMY_MAX_HP,
   ENEMY_MOVE_DUR,
@@ -44,11 +46,28 @@ export function makeEnemy(x: number, y: number): Enemy {
     lastAttack: 0,
     aggroUntil: 0,
     flashUntil: 0,
+    stationary: false,
+  };
+}
+
+// the fixed training dummy near spawn: infinite hp so it never dies, and
+// `stationary` tells systems/ai.ts's updateEnemy to skip wander/chase
+// movement entirely — it only retaliates (on a slow cooldown) when the
+// player stands next to it
+export function makeDummyEnemy(x: number, y: number): Enemy {
+  return {
+    ...makeEnemy(x, y),
+    hp: Infinity,
+    maxHp: Infinity,
+    stationary: true,
   };
 }
 
 export function spawnEnemies(state: GameState): void {
   state.enemies.length = 0;
+  state.enemies.push(
+    makeDummyEnemy(SPAWN_X + DUMMY_SPAWN_DX, SPAWN_Y + DUMMY_SPAWN_DY),
+  );
   for (let i = 0; i < ENEMY_COUNT; i++) {
     let spot: Point | null = null;
     for (let tries = 0; tries < 30; tries++) {

@@ -76,7 +76,7 @@ export interface Player extends Actor {
   lastAttack: number;
   hp: number;
   maxHp: number;
-  invulnUntil: number;
+  flashUntil: number;
 }
 
 export interface Enemy extends Actor {
@@ -89,6 +89,10 @@ export interface Enemy extends Actor {
   lastAttack: number;
   aggroUntil: number;
   flashUntil: number;
+  // true for the fixed training dummy near spawn: never wanders/chases and
+  // ignores hp loss (see systems/ai.ts's updateEnemy and entities.ts's
+  // makeDummyEnemy)
+  stationary: boolean;
 }
 
 export interface FloatingText {

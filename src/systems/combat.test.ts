@@ -4,8 +4,21 @@ import {
   createTestGameState,
   createTestHudRefs,
 } from '../test/fixtures';
-import { PLAYER_HIT_INVULN_MS, PLAYER_MOVE_HP_COST, SPAWN_X, SPAWN_Y } from '../constants';
-import { damagePlayer, killEnemy, spendMoveHp } from './combat';
+import {
+  ENEMY_COUNT,
+  HIT_FLASH_MS,
+  PLAYER_ATK_HP_COST,
+  PLAYER_MOVE_HP_COST,
+  SPAWN_X,
+  SPAWN_Y,
+} from '../constants';
+import {
+  damageEnemy,
+  damagePlayer,
+  killEnemy,
+  spendAttackHp,
+  spendMoveHp,
+} from './combat';
 
 // combat.ts's death path (damagePlayer/spendMoveHp hitting 0 hp) calls
 // resetGame -> state/state.ts's regenerateWorld -> buildGroundAtlas, which
@@ -28,14 +41,17 @@ function assertWorldWasReset(state: ReturnType<typeof createTestGameState>) {
   expect(player.attackTarget).toBeNull();
   expect(player.path).toEqual([]);
   expect(player.attacked).toBe(false);
-  expect(player.invulnUntil).toBe(0);
+  expect(player.flashUntil).toBe(0);
   expect(state.seeds.size).toBe(0);
   expect(state.smelters.size).toBe(0);
   expect(state.furnaces.size).toBe(0);
-  // only holds because ENEMY_COUNT is 0 in constants.ts today; spawnEnemies
-  // uses Math.random() internally once that's raised, which would make this
-  // assertion (and determinism generally) worth revisiting
-  expect(state.enemies.length).toBe(0);
+  // spawnEnemies always places the training dummy plus up to ENEMY_COUNT
+  // wandering enemies using the seeded rng, so the exact wandering count is
+  // deterministic but not asserted here to avoid coupling this test to
+  // worldgen/spawn-placement internals
+  expect(state.enemies.length).toBeGreaterThan(0);
+  expect(state.enemies.length).toBeLessThanOrEqual(ENEMY_COUNT + 1);
+  expect(state.enemies.some((e) => e.stationary)).toBe(true);
   expect(state.groundItems.size).toBeGreaterThan(0);
 }
 
@@ -45,24 +61,16 @@ describe('damagePlayer', () => {
     const hud = createTestHudRefs();
     damagePlayer(state, hud, 10, 1000);
     expect(state.player.hp).toBe(state.player.maxHp - 10);
-    expect(hud.statHp.textContent).toBe(`${state.player.maxHp - 10}/${state.player.maxHp}`);
+    expect(hud.statHp.textContent).toBe(
+      `${state.player.maxHp - 10}/${state.player.maxHp}`,
+    );
   });
 
-  it('sets invulnUntil to now + PLAYER_HIT_INVULN_MS on a hit', () => {
+  it('sets flashUntil to now + HIT_FLASH_MS on a hit', () => {
     const state = createTestGameState();
     const hud = createTestHudRefs();
     damagePlayer(state, hud, 10, 1000);
-    expect(state.player.invulnUntil).toBe(1000 + PLAYER_HIT_INVULN_MS);
-  });
-
-  it('is a no-op while now is before invulnUntil', () => {
-    const state = createTestGameState();
-    state.player.invulnUntil = 5000;
-    const hud = createTestHudRefs();
-    const hpBefore = state.player.hp;
-    damagePlayer(state, hud, 10, 1000);
-    expect(state.player.hp).toBe(hpBefore);
-    expect(state.player.invulnUntil).toBe(5000);
+    expect(state.player.flashUntil).toBe(1000 + HIT_FLASH_MS);
   });
 
   it('is a no-op when hp is already at or below 0', () => {
@@ -71,7 +79,6 @@ describe('damagePlayer', () => {
     const hud = createTestHudRefs();
     damagePlayer(state, hud, 10, 1000);
     expect(state.player.hp).toBe(0);
-    expect(state.player.invulnUntil).toBe(0);
   });
 
   it('treats an overkill amount the same as an exact-lethal one (both floor to 0 and reset)', () => {
@@ -101,6 +108,25 @@ describe('damagePlayer', () => {
     expect(state.player.attacked).toBe(false);
   });
 
+  it('retaliates against the attacker on a non-lethal hit, interrupting any pending path/action', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const attacker = createTestEnemy(5, 5);
+    state.player.path = [{ x: 1, y: 1 }];
+    state.player.pendingAction = { type: 'pickup', x: 2, y: 2 };
+    damagePlayer(state, hud, 10, 1000, attacker);
+    expect(state.player.attackTarget).toBe(attacker);
+    expect(state.player.path).toEqual([]);
+    expect(state.player.pendingAction).toBeNull();
+  });
+
+  it('does not set attackTarget when no attacker is passed', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    damagePlayer(state, hud, 10, 1000);
+    expect(state.player.attackTarget).toBeNull();
+  });
+
   it('resets the world when hp hits exactly 0', () => {
     const state = createTestGameState();
     state.player.hp = 10;
@@ -111,9 +137,8 @@ describe('damagePlayer', () => {
 });
 
 describe('spendMoveHp', () => {
-  it('subtracts PLAYER_MOVE_HP_COST unconditionally, ignoring invulnUntil', () => {
+  it('subtracts PLAYER_MOVE_HP_COST', () => {
     const state = createTestGameState();
-    state.player.invulnUntil = 1_000_000; // far in the future
     const hud = createTestHudRefs();
     const hpBefore = state.player.hp;
     spendMoveHp(state, hud);
@@ -136,6 +161,99 @@ describe('spendMoveHp', () => {
     const hud = createTestHudRefs();
     spendMoveHp(state, hud);
     assertWorldWasReset(state);
+  });
+});
+
+describe('spendAttackHp', () => {
+  it('subtracts PLAYER_ATK_HP_COST', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const hpBefore = state.player.hp;
+    spendAttackHp(state, hud);
+    expect(state.player.hp).toBe(hpBefore - PLAYER_ATK_HP_COST);
+  });
+
+  it('resets the world when hp hits exactly 0', () => {
+    const state = createTestGameState();
+    state.player.hp = PLAYER_ATK_HP_COST;
+    const hud = createTestHudRefs();
+    spendAttackHp(state, hud);
+    assertWorldWasReset(state);
+  });
+});
+
+describe('damageEnemy', () => {
+  it('reduces hp by amount and sets flashUntil', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.enemies.push(enemy);
+
+    damageEnemy(state, hud, enemy, 3, 1000);
+
+    expect(enemy.hp).toBe(enemy.maxHp - 3);
+    expect(enemy.flashUntil).toBe(1000 + HIT_FLASH_MS);
+  });
+
+  it('pushes a damage floating text at the enemy tile', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.enemies.push(enemy);
+
+    damageEnemy(state, hud, enemy, 3, 1000);
+
+    const text = state.floatingTexts.at(-1);
+    expect(text?.text).toBe('-3');
+    expect(text?.color).toBe('#e8a838');
+  });
+
+  it('does not kill the enemy on a non-lethal hit', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.enemies.push(enemy);
+
+    damageEnemy(state, hud, enemy, enemy.hp - 1, 1000);
+
+    expect(state.enemies).toContain(enemy);
+  });
+
+  it('floors hp at 0 and kills the enemy on a lethal hit, removing it from state.enemies', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.enemies.push(enemy);
+
+    damageEnemy(state, hud, enemy, enemy.hp + 999, 1000);
+
+    expect(enemy.hp).toBe(0);
+    expect(state.enemies).not.toContain(enemy);
+  });
+
+  it('clears player.attackTarget when it was targeting the enemy that died', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.enemies.push(enemy);
+    state.player.attackTarget = enemy;
+
+    damageEnemy(state, hud, enemy, enemy.hp, 1000);
+
+    expect(state.player.attackTarget).toBeNull();
+  });
+
+  it('leaves player.attackTarget alone when it was targeting a different enemy', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    const otherTarget = createTestEnemy(1, 1);
+    state.enemies.push(enemy, otherTarget);
+    state.player.attackTarget = otherTarget;
+
+    damageEnemy(state, hud, enemy, enemy.hp, 1000);
+
+    expect(state.player.attackTarget).toBe(otherTarget);
   });
 });
 
@@ -168,7 +286,11 @@ describe('killEnemy', () => {
     const enemy = createTestEnemy(10, 10);
     state.enemies.push(enemy);
     killEnemy(state, hud, enemy);
-    expect(state.groundItems.get('10,10')).toEqual({ x: 10, y: 10, type: 'energy' });
+    expect(state.groundItems.get('10,10')).toEqual({
+      x: 10,
+      y: 10,
+      type: 'energy',
+    });
   });
 
   it('falls back to the +1,0 ring tile when the enemy tile is occupied', () => {
@@ -178,7 +300,11 @@ describe('killEnemy', () => {
     state.enemies.push(enemy);
     state.groundItems.set('5,5', { x: 5, y: 5, type: 'ore' });
     killEnemy(state, hud, enemy);
-    expect(state.groundItems.get('6,5')).toEqual({ x: 6, y: 5, type: 'energy' });
+    expect(state.groundItems.get('6,5')).toEqual({
+      x: 6,
+      y: 5,
+      type: 'energy',
+    });
   });
 
   it('falls back to the -1,0 ring tile when both the enemy tile and +1,0 are occupied', () => {
@@ -189,7 +315,11 @@ describe('killEnemy', () => {
     state.groundItems.set('5,5', { x: 5, y: 5, type: 'ore' });
     state.groundItems.set('6,5', { x: 6, y: 5, type: 'ore' });
     killEnemy(state, hud, enemy);
-    expect(state.groundItems.get('4,5')).toEqual({ x: 4, y: 5, type: 'energy' });
+    expect(state.groundItems.get('4,5')).toEqual({
+      x: 4,
+      y: 5,
+      type: 'energy',
+    });
   });
 
   it('still fires its side effects for an enemy not present in state.enemies', () => {
@@ -206,6 +336,10 @@ describe('killEnemy', () => {
     // but the floating text/drop/hud-update still happen unconditionally
     expect(state.enemies).toEqual([other]);
     expect(state.floatingTexts.at(-1)?.text).toBe('defeated!');
-    expect(state.groundItems.get('10,10')).toEqual({ x: 10, y: 10, type: 'energy' });
+    expect(state.groundItems.get('10,10')).toEqual({
+      x: 10,
+      y: 10,
+      type: 'energy',
+    });
   });
 });

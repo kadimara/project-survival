@@ -4,7 +4,12 @@
 // separate from player-actions.ts and ai.ts so neither has to import the
 // other.
 import type { Enemy, GameState, HudRefs } from '../types/types';
-import { PLAYER_HIT_INVULN_MS, PLAYER_MOVE_HP_COST, TILE } from '../constants';
+import {
+  HIT_FLASH_MS,
+  PLAYER_ATK_HP_COST,
+  PLAYER_MOVE_HP_COST,
+  TILE,
+} from '../constants';
 import {
   placeGroundItemNear,
   regenerateWorld,
@@ -37,16 +42,52 @@ function resetGame(state: GameState, hud: HudRefs): void {
   updateHud(state, hud);
 }
 
-// spent on every tile the player steps onto (see tryPlayerStep in
-// player-actions.ts) — unlike damagePlayer this ignores hit-invuln, since
-// it's an exertion cost, not a combat hit
-export function spendMoveHp(state: GameState, hud: HudRefs): void {
+// shared exertion-cost mechanic: unlike damagePlayer this ignores
+// hit-invuln, since it's spent by the player's own actions, not a combat hit
+function spendExertionHp(state: GameState, hud: HudRefs, amount: number): void {
   const { player } = state;
-  player.hp = Math.max(0, player.hp - PLAYER_MOVE_HP_COST);
+  player.hp = Math.max(0, player.hp - amount);
   updateHud(state, hud);
   if (player.hp <= 0) {
     showToast(hud, 'You collapsed from exhaustion — resetting');
     resetGame(state, hud);
+  }
+}
+
+// spent on every tile the player steps onto (see tryPlayerStep in
+// player-actions.ts)
+export function spendMoveHp(state: GameState, hud: HudRefs): void {
+  spendExertionHp(state, hud, PLAYER_MOVE_HP_COST);
+}
+
+// spent on every landed attack (see attemptPlayerAttack in
+// player-actions.ts)
+export function spendAttackHp(state: GameState, hud: HudRefs): void {
+  spendExertionHp(state, hud, PLAYER_ATK_HP_COST);
+}
+
+// applies attack damage to an enemy (see attemptPlayerAttack in
+// player-actions.ts) and resolves death via killEnemy — the enemy-side
+// counterpart to damagePlayer below
+export function damageEnemy(
+  state: GameState,
+  hud: HudRefs,
+  enemy: Enemy,
+  amount: number,
+  now: number,
+): void {
+  enemy.hp -= amount;
+  enemy.flashUntil = now + HIT_FLASH_MS;
+  spawnFloatingText(
+    state,
+    { px: enemy.tileX * TILE, py: enemy.tileY * TILE },
+    '-' + amount,
+    '#e8a838',
+  );
+  if (enemy.hp <= 0) {
+    enemy.hp = 0;
+    if (state.player.attackTarget === enemy) state.player.attackTarget = null;
+    killEnemy(state, hud, enemy);
   }
 }
 
@@ -55,11 +96,12 @@ export function damagePlayer(
   hud: HudRefs,
   amount: number,
   now: number,
+  attacker?: Enemy,
 ): void {
   const { player } = state;
-  if (now < player.invulnUntil || player.hp <= 0) return;
+  if (player.hp <= 0) return;
   player.hp = Math.max(0, player.hp - amount);
-  player.invulnUntil = now + PLAYER_HIT_INVULN_MS;
+  player.flashUntil = now + HIT_FLASH_MS;
   spawnFloatingText(state, player, '-' + amount, '#e05c5c');
   updateHud(state, hud);
   if (player.hp <= 0) {
@@ -68,4 +110,11 @@ export function damagePlayer(
     return;
   }
   player.attacked = true;
+  // retaliate against whoever just hit us, interrupting whatever the
+  // player was doing (walking, hauling toward a pending pickup/place)
+  if (attacker) {
+    player.attackTarget = attacker;
+    player.pendingAction = null;
+    player.path = [];
+  }
 }

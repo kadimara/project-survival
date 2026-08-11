@@ -141,21 +141,31 @@ export function initColonyGame(): void {
     const { player } = state;
     const { x, y } = screenToTile(state, e.clientX, e.clientY);
 
-    if (player.held) {
-      tryPlaceAt(state, hud, x, y, walkableFn);
-      return;
-    }
-    if (occupantAt(state, x, y)) {
-      trySelectPickup(state, hud, x, y, walkableFn);
-      return;
-    }
+    // an enemy under the cursor always means attack, whether or not the
+    // player is holding something to place/drop, and even with ctrl held —
+    // ctrl only suppresses pickup/place, not attacking
     const enemyHit = state.enemies.find(
       (en) => en.hp > 0 && en.tileX === x && en.tileY === y,
     );
     if (enemyHit) {
       player.attackTarget = enemyHit;
       player.pendingAction = null;
+      player.path = [];
       return;
+    }
+
+    // holding ctrl forces a plain walk to the clicked tile, bypassing
+    // pickup/place so the player can pass through busy areas without
+    // interacting with what's there
+    if (!e.ctrlKey) {
+      if (player.held) {
+        tryPlaceAt(state, hud, x, y, walkableFn);
+        return;
+      }
+      if (occupantAt(state, x, y)) {
+        trySelectPickup(state, hud, x, y, walkableFn);
+        return;
+      }
     }
 
     const path = computeClickPath(state, x, y, walkableFn);

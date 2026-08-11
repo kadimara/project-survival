@@ -158,7 +158,6 @@ export function render(state: GameState, now: number): void {
   {
     const sx = player.px - camX,
       sy = player.py - camY;
-    if (player.invulnUntil && now < player.invulnUntil) ctx.globalAlpha = 0.55;
     drawSquareEntity(
       ctx,
       TILE,
@@ -168,7 +167,10 @@ export function render(state: GameState, now: number): void {
       PLAYER_EDGE,
       PLAYER_INSET,
     );
-    ctx.globalAlpha = 1;
+    if (player.flashUntil && now < player.flashUntil) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
+    }
     if (player.held === 'sword') {
       const box = Math.round(TILE * 0.6);
       drawSwordIcon(

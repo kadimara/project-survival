@@ -4,9 +4,9 @@ import { ITEM_MELT_MS, ORE_SMELT_MS } from '../constants';
 import { dumpInFurnace, updateSmelters } from './smelting';
 
 describe('dumpInFurnace', () => {
-  it('uses ORE_SMELT_MS for ore', () => {
+  it.each(['ore', 'sword'] as const)('uses ORE_SMELT_MS for %s', (item) => {
     const state = createTestGameState();
-    dumpInFurnace(state, 1, 1, 'ore', 1000);
+    dumpInFurnace(state, 1, 1, item, 1000);
     expect(state.smelters.get('1,1')?.readyAt).toBe(1000 + ORE_SMELT_MS);
   });
 
@@ -22,7 +22,8 @@ describe('dumpInFurnace', () => {
   it('predicts the resolved outcome per item type', () => {
     const state = createTestGameState();
     expect(dumpInFurnace(state, 0, 0, 'ore', 0)).toBe('smelting');
-    expect(dumpInFurnace(state, 1, 0, 'ingot', 0)).toBe('survived');
+    expect(dumpInFurnace(state, 1, 0, 'sword', 0)).toBe('smelting');
+    expect(dumpInFurnace(state, 4, 0, 'ingot', 0)).toBe('survived');
     expect(dumpInFurnace(state, 2, 0, 'energy', 0)).toBe('destroyed');
     expect(dumpInFurnace(state, 3, 0, 'energySeed', 0)).toBe('destroyed');
   });
@@ -56,12 +57,19 @@ describe('updateSmelters', () => {
     expect(state.smelters.has('1,1')).toBe(false);
   });
 
-  it('turns ore into an ingot ground item', () => {
-    const state = createTestGameState();
-    dumpInFurnace(state, 1, 1, 'ore', 1000);
-    updateSmelters(state, 1000 + ORE_SMELT_MS);
-    expect(state.groundItems.get('1,1')).toEqual({ x: 1, y: 1, type: 'ingot' });
-  });
+  it.each(['ore', 'sword'] as const)(
+    'turns %s into an ingot ground item',
+    (item) => {
+      const state = createTestGameState();
+      dumpInFurnace(state, 1, 1, item, 1000);
+      updateSmelters(state, 1000 + ORE_SMELT_MS);
+      expect(state.groundItems.get('1,1')).toEqual({
+        x: 1,
+        y: 1,
+        type: 'ingot',
+      });
+    },
+  );
 
   it('lets a survivor (ingot) reappear unchanged', () => {
     const state = createTestGameState();

@@ -1,7 +1,20 @@
 // Shared test fixtures for constructing minimal-but-real GameState/HudRefs
 // objects. Not matched by the vitest include glob (src/**/*.test.ts).
-import type { Enemy, GameRefs, GameState, HudRefs, Player } from '../types/types';
-import { MAP_H, MAP_W, PLAYER_MAX_HP, SPAWN_X, SPAWN_Y, TILE } from '../constants';
+import type {
+  Enemy,
+  GameRefs,
+  GameState,
+  HudRefs,
+  Player,
+} from '../types/types';
+import {
+  MAP_H,
+  MAP_W,
+  PLAYER_MAX_HP,
+  SPAWN_X,
+  SPAWN_Y,
+  TILE,
+} from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { makeEnemy } from '../entities/entities';
 
@@ -66,7 +79,7 @@ export function createTestPlayer(overrides?: Partial<Player>): Player {
     lastAttack: 0,
     hp: PLAYER_MAX_HP,
     maxHp: PLAYER_MAX_HP,
-    invulnUntil: 0,
+    flashUntil: 0,
     ...overrides,
   };
 }

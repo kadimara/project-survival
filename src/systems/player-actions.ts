@@ -9,8 +9,6 @@ import {
   ENERGY_SEED_GROW_MS,
   PLAYER_ATK_COOLDOWN,
   PLAYER_ATK_DAMAGE,
-  PLAYER_CARRY_MOVE_DUR,
-  TILE,
   TILE_DEFS,
   WEAPON_DEFS,
 } from '../constants';
@@ -30,7 +28,7 @@ import {
   isAdjacent,
   type Walkable,
 } from './pathfinding';
-import { killEnemy, spendMoveHp } from './combat';
+import { damageEnemy, spendAttackHp, spendMoveHp } from './combat';
 import { tryCombine } from './combine';
 import { plantSeed } from './farming';
 import { dumpInFurnace } from './smelting';
@@ -49,7 +47,7 @@ export function tryPlayerStep(
 ): boolean {
   const { player } = state;
   if (!walkable(nx, ny)) return false;
-  player.moveDur = player.held ? PLAYER_CARRY_MOVE_DUR : BASE_MOVE_DUR;
+  player.moveDur = BASE_MOVE_DUR;
   startStep(player, nx, ny, dir);
   spendMoveHp(state, hud);
   return true;
@@ -254,6 +252,7 @@ export function trySelectPickup(
   walkable: (x: number, y: number) => boolean,
 ): void {
   const { player } = state;
+  player.attackTarget = null;
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
     doPickup(state, hud, x, y);
     return;
@@ -280,6 +279,7 @@ export function tryPlaceAt(
     const target = occupantAt(state, x, y);
     if (target !== null && tryCombine(player.held, target) === null) return;
   }
+  player.attackTarget = null;
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
     doPlace(state, hud, x, y);
     return;
@@ -313,19 +313,8 @@ export function attemptPlayerAttack(
   const cooldown = weapon?.cooldown ?? PLAYER_ATK_COOLDOWN;
   if (now - player.lastAttack < cooldown) return;
   player.lastAttack = now;
-  t.hp -= damage;
-  t.flashUntil = now + 140;
-  spawnFloatingText(
-    state,
-    { px: t.tileX * TILE, py: t.tileY * TILE },
-    '-' + damage,
-    '#e8a838',
-  );
-  if (t.hp <= 0) {
-    t.hp = 0;
-    player.attackTarget = null;
-    killEnemy(state, hud, t);
-  }
+  damageEnemy(state, hud, t, damage, now);
+  spendAttackHp(state, hud);
 }
 
 export function onPlayerArrived(state: GameState, hud: HudRefs): void {
