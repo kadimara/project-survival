@@ -15,6 +15,7 @@ import {
   regenerateWorld,
   walkable as stateWalkable,
 } from './state/state';
+import { loadGame, saveGame } from './state/persistence';
 import {
   dirBetween,
   spawnEnemies,
@@ -37,7 +38,13 @@ import { heldDir, setupPlayerInput } from './input/player-input';
 import { updateEnemy } from './systems/ai';
 import { updateSeeds } from './systems/farming';
 import { updateSmelters } from './systems/smelting';
-import { createHudRefs, enableDragPan, setMapOpen, updateHud } from './ui/hud';
+import {
+  createHudRefs,
+  enableDragPan,
+  setMapOpen,
+  showToast,
+  updateHud,
+} from './ui/hud';
 import { render, renderWorldMap } from './render/render';
 
 let started = false;
@@ -69,7 +76,8 @@ export function initColonyGame(): void {
     groundAtlas,
     groundAtlasCtx,
   };
-  const state = createGameState(refs, spawnEnemies);
+  const loaded = loadGame(refs);
+  const state = loaded ?? createGameState(refs, spawnEnemies);
   const hud = createHudRefs();
 
   worldCanvas.width = MAP_W * WORLD_TILE;
@@ -77,7 +85,18 @@ export function initColonyGame(): void {
   worldCanvas.style.width = worldCanvas.width * 2 + 'px';
   worldCanvas.style.height = worldCanvas.height * 2 + 'px';
 
-  applyZoom(state, DEFAULT_ZOOM_INDEX);
+  applyZoom(state, loaded ? state.zoomIndex : DEFAULT_ZOOM_INDEX);
+  if (loaded) showToast(hud, 'Loaded saved game');
+
+  // ---- autosave: periodic snapshot plus a last-chance save whenever the
+  // tab is about to lose focus/close, since beforeunload alone is
+  // unreliable on mobile browsers ----
+  const AUTOSAVE_MS = 5000;
+  setInterval(() => saveGame(state), AUTOSAVE_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveGame(state);
+  });
+  window.addEventListener('beforeunload', () => saveGame(state));
 
   // keep the canvas the largest square that fits on screen, no matter how
   // the window is resized or the surrounding HUD text reflows
@@ -164,12 +183,14 @@ export function initColonyGame(): void {
       regenerateWorld(state, v, spawnEnemies);
       hud.seedInput.value = String(state.seed);
       updateHud(state, hud);
+      saveGame(state);
     }
   });
   hud.seedRandomBtn.addEventListener('click', () => {
     regenerateWorld(state, Math.floor(Math.random() * 1e9), spawnEnemies);
     hud.seedInput.value = String(state.seed);
     updateHud(state, hud);
+    saveGame(state);
   });
 
   // ---- keyboard shortcuts ----
