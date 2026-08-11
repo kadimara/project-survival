@@ -229,28 +229,39 @@ function seedWildItems(state: GameState, count: number, type: ItemType): void {
   }
 }
 
-// one ore ground item sitting on the extra 'stone' tile buildTiles adds
-// near spawn (see its comment) — purely so ore is visible/testable in-game,
-// not part of procedural generation
+// the extra 'stone' tiles buildTiles adds near spawn (see its comment) each
+// get an ore ground item — enough (3) to smelt into ingots for one sword
+// (2 ingots) with one ore left over, purely so the ore->ingot->sword loop is
+// playable/testable in-game without a real ore-vein worldgen pass
+const SPAWN_ORE_OFFSETS: [number, number][] = [
+  [2, 0],
+  [2, 1],
+  [2, -1],
+];
+
 function placeSpawnOre(state: GameState): void {
-  const x = SPAWN_X + 2,
-    y = SPAWN_Y;
-  state.groundItems.set(x + ',' + y, { x, y, type: 'ore' });
+  for (const [dx, dy] of SPAWN_ORE_OFFSETS) {
+    const x = SPAWN_X + dx,
+      y = SPAWN_Y + dy;
+    state.groundItems.set(x + ',' + y, { x, y, type: 'ore' });
+  }
 }
 
 // builds the noise-generated 'stone' layer via worldgen.ts's buildStones
-// (left completely untouched), then adds one extra 'stone' tile (for the
-// ore ground item placed on top of it, see createGameState/regenerateWorld)
-// and one 'soil' tile near spawn purely so those types are visible/testable
-// in-game — not part of procedural generation, fixed offsets within
-// buildStones's own carved spawn-safety bubble guarantee they're always
-// open ground and reachable
+// (left completely untouched), then adds a few extra fixed tiles near
+// spawn purely so those types (and the ore ground items sitting on some of
+// them, see placeSpawnOre) are visible/testable in-game — not part of
+// procedural generation, fixed offsets within buildStones's own carved
+// spawn-safety bubble guarantee they're always open ground and reachable
 function buildTiles(seed: number): Map<string, TileType> {
   const keys = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
   const tiles = new Map<string, TileType>();
   for (const key of keys) tiles.set(key, 'stone');
-  tiles.set(SPAWN_X + 2 + ',' + SPAWN_Y, 'stone');
+  for (const [dx, dy] of SPAWN_ORE_OFFSETS) {
+    tiles.set(SPAWN_X + dx + ',' + (SPAWN_Y + dy), 'stone');
+  }
   tiles.set(SPAWN_X - 2 + ',' + SPAWN_Y, 'soil');
+  tiles.set(SPAWN_X + ',' + (SPAWN_Y - 2), 'wood');
   return tiles;
 }
 

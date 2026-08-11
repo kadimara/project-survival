@@ -6,10 +6,12 @@ const ALL_CARRY_TYPES: CarryType[] = [
   'stone',
   'soil',
   'furnace',
+  'wood',
   'energy',
   'energySeed',
   'ingot',
   'ore',
+  'sword',
 ];
 
 describe('tryCombine', () => {
@@ -17,10 +19,15 @@ describe('tryCombine', () => {
     expect(tryCombine('stone', 'stone')).toBe('furnace');
   });
 
+  it('resolves the ingot + ingot recipe to sword', () => {
+    expect(tryCombine('ingot', 'ingot')).toBe('sword');
+  });
+
   it('returns null for non-matching pairs', () => {
     expect(tryCombine('energy', 'ore')).toBeNull();
     expect(tryCombine('furnace', 'furnace')).toBeNull();
     expect(tryCombine('soil', 'stone')).toBeNull();
+    expect(tryCombine('ingot', 'wood')).toBeNull();
   });
 
   it('matches RECIPES for every held/target pair (future-proofs new recipes)', () => {
