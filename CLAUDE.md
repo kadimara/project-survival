@@ -13,8 +13,11 @@ A browser-based top-down survival game: a single player character explores a pro
 - `npm run lint` — ESLint (flat config, `eslint.config.js`)
 - `npm run format` — Prettier, writes in place
 - `npm run preview` — serve the production build locally
+- `npm test` — run the Vitest unit suite (`vitest run`)
 
-There is no test suite in this repo. `prepare`/husky + lint-staged run Prettier on staged files at commit time.
+Tests are colocated `*.test.ts` files next to the module they cover (e.g. `src/systems/combat.test.ts`); shared `GameState`/`HudRefs` test fixtures live in `src/test/fixtures.ts`. Coverage currently targets the pure-logic `systems/` modules (`pathfinding`, `combine`, `farming`, `smelting`, `combat`) — rendering, DOM, and `game.ts`'s orchestration are untested by design, not oversight. `prepare`/husky + lint-staged run Prettier on staged files at commit time.
+
+**When implementing a feature or bug fix that touches a pure-logic module** (anything shaped like `(state, ...) -> mutation`, currently the `systems/` modules listed above plus any new ones with the same shape), add or update its `*.test.ts` file in the same change — new exported functions and new branches in existing ones should land with tests, not as a follow-up. Reuse `src/test/fixtures.ts` rather than hand-rolling a new `GameState`/`HudRefs` fixture per file. Changes confined to `render/`, `ui/`, or `game.ts`'s DOM/canvas wiring don't need tests under this suite.
 
 ## Architecture
 
