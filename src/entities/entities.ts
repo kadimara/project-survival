@@ -17,7 +17,7 @@ import {
 } from '../constants';
 import { randomOpenTile } from '../state/state';
 
-function makeEnemy(x: number, y: number): Enemy {
+export function makeEnemy(x: number, y: number): Enemy {
   return {
     tileX: x,
     tileY: y,
