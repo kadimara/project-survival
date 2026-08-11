@@ -31,12 +31,18 @@ const SAVE_KEY = 'project-survival-save-v1';
 
 // grid-cell byte id, 0 = no tile (open ground). Room for 255 tile types
 // before this needs to grow past one byte per cell.
-const TILE_TO_ID: Record<TileType, number> = { stone: 1, soil: 2, furnace: 3 };
+const TILE_TO_ID: Record<TileType, number> = {
+  stone: 1,
+  soil: 2,
+  furnace: 3,
+  wood: 4,
+};
 const ID_TO_TILE: (TileType | undefined)[] = [
   undefined,
   'stone',
   'soil',
   'furnace',
+  'wood',
 ];
 
 function encodeTilesGrid(tiles: Map<string, TileType>): string {
@@ -97,6 +103,7 @@ const ITEM_TO_ID: Record<ItemType, number> = {
   energySeed: 2,
   ore: 3,
   ingot: 4,
+  sword: 5,
 };
 const ID_TO_ITEM: (ItemType | undefined)[] = [
   undefined,
@@ -104,6 +111,7 @@ const ID_TO_ITEM: (ItemType | undefined)[] = [
   'energySeed',
   'ore',
   'ingot',
+  'sword',
 ];
 
 function encodeGroundItems(items: Map<string, GroundItem>): number[] {

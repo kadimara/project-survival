@@ -12,6 +12,7 @@ import {
   PLAYER_CARRY_MOVE_DUR,
   TILE,
   TILE_DEFS,
+  WEAPON_DEFS,
 } from '../constants';
 import {
   isEnemyAt,
@@ -305,14 +306,19 @@ export function attemptPlayerAttack(
   const { player } = state;
   const t = player.attackTarget;
   if (!t || t.hp <= 0) return;
-  if (now - player.lastAttack < PLAYER_ATK_COOLDOWN) return;
+  // a weapon in-hand (see WEAPON_DEFS in constants.ts) overrides the
+  // unarmed damage/cooldown; anything else held (or nothing) attacks unarmed
+  const weapon = player.held ? WEAPON_DEFS[player.held as ItemType] : undefined;
+  const damage = weapon?.damage ?? PLAYER_ATK_DAMAGE;
+  const cooldown = weapon?.cooldown ?? PLAYER_ATK_COOLDOWN;
+  if (now - player.lastAttack < cooldown) return;
   player.lastAttack = now;
-  t.hp -= PLAYER_ATK_DAMAGE;
+  t.hp -= damage;
   t.flashUntil = now + 140;
   spawnFloatingText(
     state,
     { px: t.tileX * TILE, py: t.tileY * TILE },
-    '-' + PLAYER_ATK_DAMAGE,
+    '-' + damage,
     '#e8a838',
   );
   if (t.hp <= 0) {

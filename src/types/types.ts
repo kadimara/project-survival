@@ -10,8 +10,8 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
 // tiles are the grid layer: solid, atlas-baked (see TILE_DEFS in
 // constants.ts). Items are the ground layer: loose, drawn per-frame, sit on
 // top of terrain rather than being part of the grid (see ITEM_DEFS).
-export type TileType = 'stone' | 'soil' | 'furnace';
-export type ItemType = 'energy' | 'energySeed' | 'ingot' | 'ore';
+export type TileType = 'stone' | 'soil' | 'furnace' | 'wood';
+export type ItemType = 'energy' | 'energySeed' | 'ingot' | 'ore' | 'sword';
 export type CarryType = TileType | ItemType;
 
 export interface Point {

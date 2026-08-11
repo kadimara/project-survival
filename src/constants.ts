@@ -58,6 +58,16 @@ export const TILE_DEFS: Record<
     allowGroundItem: true,
     colors: { primary: '#c65a2e', secondary: '#5a2c17' },
   },
+  // a diggable obstacle like stone/soil, not yet consumed by any recipe —
+  // seeded near spawn (see buildTiles in state/state.ts) so it's
+  // visible/testable ahead of the combine recipe that will use it (a
+  // spear or similar, held alongside ingot)
+  wood: {
+    solid: true,
+    pickable: true,
+    allowGroundItem: false,
+    colors: { primary: '#a9773f', secondary: '#6b4c22' },
+  },
 };
 
 // ---- item defs: the ground layer (loose, drawn per-frame, walkable) ----
@@ -80,6 +90,14 @@ export const ITEM_DEFS: Record<
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
   ingot: {
+    colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
+  },
+  // crafted from ingot + ingot (see systems/combine.ts) — see WEAPON_DEFS
+  // below for how holding it changes the player's attack. Shares colors
+  // with ore/ingot on purpose (same lineage: ore -> ingot -> sword), same
+  // idea as energy/energySeed above; drawn with its own blade-shaped icon
+  // rather than the generic item square (see drawSwordIcon in rendering.ts)
+  sword: {
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
 };
@@ -117,6 +135,17 @@ export const PLAYER_HIT_INVULN_MS = 500;
 export const PLAYER_RESPAWN_INVULN_MS = 1200;
 export const PLAYER_ATK_DAMAGE = 3;
 export const PLAYER_ATK_COOLDOWN = 650;
+
+// a weapon is "equipped" simply by being held (see attemptPlayerAttack in
+// systems/player-actions.ts) — no separate equip slot, so wielding one
+// means your one carry slot isn't free for hauling ore/energy/etc. Only
+// item types listed here override the unarmed PLAYER_ATK_DAMAGE/COOLDOWN
+// above; anything else held attacks unarmed.
+export const WEAPON_DEFS: Partial<
+  Record<ItemType, { damage: number; cooldown: number }>
+> = {
+  sword: { damage: 6, cooldown: 650 },
+};
 // hp spent per tile the player steps onto, however the step was triggered
 // (keyboard, click-to-move, or auto-pathing toward an attack target)
 export const PLAYER_MOVE_HP_COST = 1;
