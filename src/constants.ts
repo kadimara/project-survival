@@ -112,11 +112,17 @@ export const PLAYER_COLOR = '#d99a3f';
 export const PLAYER_EDGE = '#8f5f1f';
 export const PLAYER_INSET = 2;
 export const PLAYER_CARRY_MOVE_DUR = 300; // slower while hauling an obstacle/food item
-export const PLAYER_MAX_HP = 20;
+export const PLAYER_MAX_HP = 100;
 export const PLAYER_HIT_INVULN_MS = 500;
 export const PLAYER_RESPAWN_INVULN_MS = 1200;
 export const PLAYER_ATK_DAMAGE = 3;
 export const PLAYER_ATK_COOLDOWN = 650;
+// hp spent per tile the player steps onto, however the step was triggered
+// (keyboard, click-to-move, or auto-pathing toward an attack target)
+export const PLAYER_MOVE_HP_COST = 1;
+// hp restored by using (eating) a held energy item, see useHeldItem in
+// systems/player-actions.ts
+export const ENERGY_HEAL_AMOUNT = 50;
 
 // ---- roaming enemies: wander until they see you, then chase and attack ----
 export const ENEMY_COUNT = 0;

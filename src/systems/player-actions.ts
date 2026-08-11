@@ -5,6 +5,7 @@ import type { Dir, GameState, HudRefs, ItemType, Point } from '../types/types';
 import {
   BASE_MOVE_DUR,
   carryColor,
+  ENERGY_HEAL_AMOUNT,
   ENERGY_SEED_GROW_MS,
   PLAYER_ATK_COOLDOWN,
   PLAYER_ATK_DAMAGE,
@@ -28,29 +29,39 @@ import {
   isAdjacent,
   type Walkable,
 } from './pathfinding';
-import { killEnemy } from './combat';
+import { killEnemy, spendMoveHp } from './combat';
 import { tryCombine } from './combine';
 import { plantSeed } from './farming';
 import { dumpInFurnace } from './smelting';
-import { updateHud } from '../ui/hud';
+import { showToast, updateHud } from '../ui/hud';
 
-// advances the player one tile onto open ground. Returns false if the tile
-// is blocked, so callers can bail out of whatever path they were following.
+// advances the player one tile onto open ground, spending move hp. Returns
+// false if the tile is blocked, so callers can bail out of whatever path
+// they were following.
 export function tryPlayerStep(
   state: GameState,
+  hud: HudRefs,
   nx: number,
   ny: number,
   dir: Dir,
   walkable: Walkable,
+  now: number,
 ): boolean {
   const { player } = state;
   if (!walkable(nx, ny)) return false;
   player.moveDur = player.held ? PLAYER_CARRY_MOVE_DUR : BASE_MOVE_DUR;
   startStep(player, nx, ny, dir);
+  spendMoveHp(state, hud, now);
   return true;
 }
 
-export function tryMove(state: GameState, dir: Dir, walkable: Walkable): void {
+export function tryMove(
+  state: GameState,
+  hud: HudRefs,
+  dir: Dir,
+  walkable: Walkable,
+  now: number,
+): void {
   let dx = 0,
     dy = 0;
   if (dir === 'up') dy = -1;
@@ -58,7 +69,32 @@ export function tryMove(state: GameState, dir: Dir, walkable: Walkable): void {
   else if (dir === 'left') dx = -1;
   else if (dir === 'right') dx = 1;
   const { player } = state;
-  tryPlayerStep(state, player.tileX + dx, player.tileY + dy, dir, walkable);
+  tryPlayerStep(
+    state,
+    hud,
+    player.tileX + dx,
+    player.tileY + dy,
+    dir,
+    walkable,
+    now,
+  );
+}
+
+// consumes the held item, if it's usable. Currently only energy does
+// anything (heals); anything else just declines with a toast, since it's
+// not food. Triggered by the "Use item" button, which is only shown while
+// something is held.
+export function useHeldItem(state: GameState, hud: HudRefs): void {
+  const { player } = state;
+  if (!player.held) return;
+  if (player.held !== 'energy') {
+    showToast(hud, "You can't use that");
+    return;
+  }
+  player.hp = Math.min(player.maxHp, player.hp + ENERGY_HEAL_AMOUNT);
+  player.held = null;
+  spawnFloatingText(state, player, '+' + ENERGY_HEAL_AMOUNT, '#7fd47f');
+  updateHud(state, hud);
 }
 
 export function computeClickPath(

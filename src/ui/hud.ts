@@ -14,6 +14,7 @@ export function createHudRefs(): HudRefs {
     statHp: byId('stat-hp'),
     statCarry: byId('stat-carry'),
     toastEl: byId('toast'),
+    useItemBtn: byId('use-item-btn'),
 
     worldMapOverlay: byId('world-map-overlay'),
     worldMapCloseBtn: byId('world-map-close'),
@@ -31,6 +32,12 @@ export function createHudRefs(): HudRefs {
 export function updateHud(state: GameState, hud: HudRefs): void {
   hud.statHp.textContent = state.player.hp + '/' + state.player.maxHp;
   hud.statCarry.textContent = state.player.held ?? 'nothing';
+  if (state.player.held) {
+    hud.useItemBtn.textContent = 'Use item: ' + state.player.held;
+    hud.useItemBtn.style.display = 'flex';
+  } else {
+    hud.useItemBtn.style.display = 'none';
+  }
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;

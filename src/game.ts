@@ -18,7 +18,6 @@ import {
 import {
   dirBetween,
   spawnEnemies,
-  startStep,
   updateActorAnimation,
 } from './entities/entities';
 import { applyZoom, fitCanvasDisplaySize, screenToTile } from './render/camera';
@@ -32,6 +31,7 @@ import {
   tryPlaceAt,
   tryPlayerStep,
   trySelectPickup,
+  useHeldItem,
 } from './systems/player-actions';
 import { heldDir, setupPlayerInput } from './input/player-input';
 import { updateEnemy } from './systems/ai';
@@ -106,6 +106,9 @@ export function initColonyGame(): void {
 
   // ---- player movement input ----
   setupPlayerInput(state);
+
+  // ---- use held item ----
+  hud.useItemBtn.addEventListener('click', () => useHeldItem(state, hud));
 
   // ---- hover + click on the main canvas ----
   canvas.addEventListener('mousemove', (e) => {
@@ -193,7 +196,7 @@ export function initColonyGame(): void {
         player.path = [];
         player.pendingAction = null;
         player.attackTarget = null;
-        tryMove(state, dir, walkableFn);
+        tryMove(state, hud, dir, walkableFn, now);
       } else if (player.attackTarget && player.attackTarget.hp > 0) {
         const t = player.attackTarget;
         if (isAdjacent(player.tileX, player.tileY, t.tileX, t.tileY)) {
@@ -213,20 +216,17 @@ export function initColonyGame(): void {
           }
           if (player.path.length) {
             const next = player.path.shift()!;
-            if (walkableFn(next.x, next.y))
-              startStep(
-                player,
-                next.x,
-                next.y,
-                dirBetween(player.tileX, player.tileY, next.x, next.y),
-              );
-            else player.path = [];
+            const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
+            if (
+              !tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn, now)
+            )
+              player.path = [];
           }
         }
       } else if (player.path.length) {
         const next = player.path.shift()!;
         const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-        if (!tryPlayerStep(state, next.x, next.y, dir, walkableFn))
+        if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn, now))
           player.path = [];
       }
     }

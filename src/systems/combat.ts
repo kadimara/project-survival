@@ -5,6 +5,7 @@
 import type { Enemy, GameState, HudRefs } from '../types/types';
 import {
   PLAYER_HIT_INVULN_MS,
+  PLAYER_MOVE_HP_COST,
   PLAYER_RESPAWN_INVULN_MS,
   SPAWN_X,
   SPAWN_Y,
@@ -44,6 +45,20 @@ export function respawnPlayer(
   player.moving = false;
   player.invulnUntil = now + PLAYER_RESPAWN_INVULN_MS;
   updateHud(state, hud);
+}
+
+// spent on every tile the player steps onto (see tryPlayerStep in
+// player-actions.ts) — unlike damagePlayer this ignores hit-invuln, since
+// it's an exertion cost, not a combat hit
+export function spendMoveHp(state: GameState, hud: HudRefs, now: number): void {
+  const { player } = state;
+  player.hp = Math.max(0, player.hp - PLAYER_MOVE_HP_COST);
+  updateHud(state, hud);
+  if (player.hp <= 0) {
+    placeGroundItemNear(state, player.tileX, player.tileY, 'energy');
+    showToast(hud, 'You collapsed from exhaustion — respawning');
+    respawnPlayer(state, hud, now);
+  }
 }
 
 export function damagePlayer(

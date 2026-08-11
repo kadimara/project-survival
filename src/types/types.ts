@@ -113,6 +113,7 @@ export interface HudRefs {
   statHp: HTMLElement;
   statCarry: HTMLElement;
   toastEl: HTMLElement;
+  useItemBtn: HTMLElement;
 
   worldMapOverlay: HTMLElement;
   worldMapCloseBtn: HTMLElement;
