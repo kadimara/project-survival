@@ -129,10 +129,11 @@ export function carryColor(kind: TileType | ItemType): string {
 export const PLAYER_COLOR = '#d99a3f';
 export const PLAYER_EDGE = '#8f5f1f';
 export const PLAYER_INSET = 2;
-export const PLAYER_CARRY_MOVE_DUR = 300; // slower while hauling an obstacle/food item
 export const PLAYER_MAX_HP = 100;
-export const PLAYER_HIT_INVULN_MS = 500;
-export const PLAYER_RESPAWN_INVULN_MS = 1200;
+// duration of the white on-hit flash overlay, shared by the player and
+// enemies (see render.ts, combat.ts's damagePlayer, ai.ts's
+// attemptEnemyAttack, and player-actions.ts's attemptPlayerAttack)
+export const HIT_FLASH_MS = 140;
 export const PLAYER_ATK_DAMAGE = 3;
 export const PLAYER_ATK_COOLDOWN = 650;
 
@@ -149,12 +150,15 @@ export const WEAPON_DEFS: Partial<
 // hp spent per tile the player steps onto, however the step was triggered
 // (keyboard, click-to-move, or auto-pathing toward an attack target)
 export const PLAYER_MOVE_HP_COST = 1;
+// hp spent per landed player attack (unarmed or with a weapon), same
+// exertion-cost mechanic as PLAYER_MOVE_HP_COST
+export const PLAYER_ATK_HP_COST = 1;
 // hp restored by using (eating) a held energy item, see useHeldItem in
 // systems/player-actions.ts
 export const ENERGY_HEAL_AMOUNT = 50;
 
 // ---- roaming enemies: wander until they see you, then chase and attack ----
-export const ENEMY_COUNT = 0;
+export const ENEMY_COUNT = 20;
 export const ENEMY_MAX_HP = 10;
 export const ENEMY_MOVE_DUR = 280;
 export const ENEMY_ATK_DAMAGE = 2;
@@ -166,3 +170,10 @@ export const ENEMY_WANDER_MAX_MS = 3000;
 export const ENEMY_WANDER_RADIUS = 4;
 export const ENEMY_REPATH_MS = 500;
 export const ENEMY_SPAWN_MIN_DIST = 10; // keep initial spawns away from the player's start
+
+// ---- training dummy: fixed, immortal, immovable enemy near spawn (see
+// makeDummyEnemy in entities/entities.ts). Retaliates like a normal enemy
+// but on a much slower cooldown, and never wanders/chases.
+export const DUMMY_SPAWN_DX = 0;
+export const DUMMY_SPAWN_DY = 2; // within buildStones' spawn-safety bubble, so always open ground
+export const DUMMY_ATK_COOLDOWN = 3000;

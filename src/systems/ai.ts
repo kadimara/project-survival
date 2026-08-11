@@ -1,6 +1,7 @@
 // Enemy AI: wander until the player is sighted, then chase and attack.
 import type { Enemy, GameState, HudRefs, Player } from '../types/types';
 import {
+  DUMMY_ATK_COOLDOWN,
   ENEMY_AGGRO_RADIUS,
   ENEMY_ATK_COOLDOWN,
   ENEMY_ATK_DAMAGE,
@@ -9,6 +10,7 @@ import {
   ENEMY_WANDER_MAX_MS,
   ENEMY_WANDER_MIN_MS,
   ENEMY_WANDER_RADIUS,
+  HIT_FLASH_MS,
 } from '../constants';
 import { isSolid } from '../state/state';
 import {
@@ -51,10 +53,11 @@ function attemptEnemyAttack(
   enemy: Enemy,
   now: number,
 ): void {
-  if (now - enemy.lastAttack < ENEMY_ATK_COOLDOWN) return;
+  const cooldown = enemy.stationary ? DUMMY_ATK_COOLDOWN : ENEMY_ATK_COOLDOWN;
+  if (now - enemy.lastAttack < cooldown) return;
   enemy.lastAttack = now;
-  enemy.flashUntil = now + 140;
-  damagePlayer(state, hud, ENEMY_ATK_DAMAGE, now);
+  enemy.flashUntil = now + HIT_FLASH_MS;
+  damagePlayer(state, hud, ENEMY_ATK_DAMAGE, now, enemy);
 }
 
 // ---- enemy AI: wander, then chase + attack on sight ----
@@ -68,6 +71,25 @@ export function updateEnemy(
   if (enemy.hp <= 0) return;
   if (enemy.moving) {
     updateActorAnimation(enemy, now);
+    return;
+  }
+
+  // the training dummy never wanders or chases — it just stands there and
+  // retaliates if the player is standing next to it
+  if (enemy.stationary) {
+    const { player } = state;
+    if (
+      player.hp > 0 &&
+      isAdjacent(enemy.tileX, enemy.tileY, player.tileX, player.tileY)
+    ) {
+      enemy.dir = dirBetween(
+        enemy.tileX,
+        enemy.tileY,
+        player.tileX,
+        player.tileY,
+      );
+      attemptEnemyAttack(state, hud, enemy, now);
+    }
     return;
   }
 

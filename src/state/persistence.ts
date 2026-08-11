@@ -22,10 +22,19 @@ import type {
   Smelter,
   TileType,
 } from '../types/types';
-import { BASE_MOVE_DUR, MAP_H, MAP_W, PLAYER_MAX_HP } from '../constants';
+import {
+  BASE_MOVE_DUR,
+  DUMMY_SPAWN_DX,
+  DUMMY_SPAWN_DY,
+  MAP_H,
+  MAP_W,
+  PLAYER_MAX_HP,
+  SPAWN_X,
+  SPAWN_Y,
+} from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { buildGroundAtlas } from '../render/ground-atlas';
-import { makeEnemy } from '../entities/entities';
+import { makeDummyEnemy, makeEnemy } from '../entities/entities';
 
 const SAVE_KEY = 'project-survival-save-v1';
 
@@ -173,15 +182,19 @@ export function saveGame(state: GameState): void {
     groundItems: encodeGroundItems(state.groundItems),
     seeds: Array.from(state.seeds.entries()),
     smelters: Array.from(state.smelters.entries()),
-    enemies: state.enemies.map((e) => ({
-      tileX: e.tileX,
-      tileY: e.tileY,
-      px: e.px,
-      py: e.py,
-      dir: e.dir,
-      hp: e.hp,
-      maxHp: e.maxHp,
-    })),
+    // the training dummy (Infinity hp, doesn't survive JSON) is re-created
+    // fresh on load instead of being persisted, see loadGame below
+    enemies: state.enemies
+      .filter((e) => !e.stationary)
+      .map((e) => ({
+        tileX: e.tileX,
+        tileY: e.tileY,
+        px: e.px,
+        py: e.py,
+        dir: e.dir,
+        hp: e.hp,
+        maxHp: e.maxHp,
+      })),
     player: {
       tileX: state.player.tileX,
       tileY: state.player.tileY,
@@ -247,7 +260,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     lastAttack: 0,
     hp: sp.hp,
     maxHp: sp.maxHp ?? PLAYER_MAX_HP,
-    invulnUntil: 0,
+    flashUntil: 0,
   };
 
   const enemies = data.enemies.map((se) => {
@@ -259,6 +272,9 @@ export function loadGame(refs: GameRefs): GameState | null {
     e.maxHp = se.maxHp;
     return e;
   });
+  enemies.push(
+    makeDummyEnemy(SPAWN_X + DUMMY_SPAWN_DX, SPAWN_Y + DUMMY_SPAWN_DY),
+  );
 
   const state: GameState = {
     refs,

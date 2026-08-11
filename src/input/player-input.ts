@@ -20,11 +20,13 @@ const MOVE_KEYS = [
 
 export function setupPlayerInput(state: GameState): void {
   window.addEventListener('keydown', (e) => {
-    if (MOVE_KEYS.includes(e.key)) e.preventDefault();
+    if (MOVE_KEYS.includes(e.key)) {
+      e.preventDefault();
+      state.player.path = [];
+      state.player.pendingAction = null;
+      state.player.attackTarget = null;
+    }
     keys[e.key.toLowerCase()] = true;
-    state.player.path = [];
-    state.player.pendingAction = null;
-    state.player.attackTarget = null;
   });
   window.addEventListener('keyup', (e) => {
     keys[e.key.toLowerCase()] = false;
