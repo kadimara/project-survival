@@ -93,9 +93,12 @@ export const ITEM_DEFS: Record<
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
   // crafted from ingot + ingot (see systems/combine.ts) — see WEAPON_DEFS
-  // below for how holding it changes the player's attack
+  // below for how holding it changes the player's attack. Shares colors
+  // with ore/ingot on purpose (same lineage: ore -> ingot -> sword), same
+  // idea as energy/energySeed above; drawn with its own blade-shaped icon
+  // rather than the generic item square (see drawSwordIcon in rendering.ts)
   sword: {
-    colors: { primary: '#d8d8e0', secondary: '#6f6f7a' },
+    colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
 };
 

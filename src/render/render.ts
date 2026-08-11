@@ -22,6 +22,7 @@ import {
   drawItemIcon,
   drawScatteredDots,
   drawSquareEntity,
+  drawSwordIcon,
 } from './rendering';
 
 // per-tile pseudo-random phase so several furnaces don't flicker in lockstep
@@ -168,7 +169,16 @@ export function render(state: GameState, now: number): void {
       PLAYER_INSET,
     );
     ctx.globalAlpha = 1;
-    if (player.held) {
+    if (player.held === 'sword') {
+      const box = Math.round(TILE * 0.6);
+      drawSwordIcon(
+        ctx,
+        box,
+        sx + TILE / 2 - box / 2,
+        sy - box,
+        ITEM_DEFS.sword.colors,
+      );
+    } else if (player.held) {
       ctx.fillStyle = carryColor(player.held);
       ctx.fillRect(sx + TILE / 2 - 2, sy - 5, 4, 4);
     }

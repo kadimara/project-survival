@@ -144,6 +144,40 @@ export function drawScatteredDots(
   }
 }
 
+// a small blade-shaped icon (blade, crossguard, handle, pommel, top to
+// bottom) built from a handful of rects, matching the game's blocky art
+// style elsewhere (drawFurnaceGlow, drawObstacle). `box` is the square
+// footprint to draw within — the ground-item tile size for a dropped
+// sword (see drawItemIcon below), or a smaller box for the held-item
+// indicator drawn above the player's head (see render.ts) — so the same
+// proportions read as a sword at either scale.
+export function drawSwordIcon(
+  ctx: CanvasRenderingContext2D,
+  box: number,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  const cx = sx + box / 2;
+  const bladeW = Math.max(1, Math.round(box * 0.125));
+  const bladeH = Math.max(2, Math.round(box * 0.5));
+  const bladeY = sy + Math.round(box * 0.125);
+  const guardW = Math.max(bladeW + 2, Math.round(box * 0.375));
+  const guardH = Math.max(1, Math.round(box * 0.125));
+  const guardY = bladeY + bladeH - guardH;
+  const handleH = Math.max(1, Math.round(box * 0.1875));
+  const pommelW = Math.max(bladeW, Math.round(box * 0.25));
+  const pommelH = Math.max(1, Math.round(box * 0.125));
+
+  ctx.fillStyle = colors.primary;
+  ctx.fillRect(cx - bladeW / 2, bladeY, bladeW, bladeH);
+  ctx.fillStyle = colors.secondary;
+  ctx.fillRect(cx - guardW / 2, guardY, guardW, guardH);
+  ctx.fillRect(cx - bladeW / 2, guardY + guardH, bladeW, handleH);
+  ctx.fillStyle = colors.primary;
+  ctx.fillRect(cx - pommelW / 2, guardY + guardH + handleH, pommelW, pommelH);
+}
+
 // draws whichever visual `type` uses as a loose item — shared by
 // state.groundItems and an in-progress furnace job (state.smelters) so a
 // job renders exactly like the item it started from, see render.ts
@@ -161,6 +195,10 @@ export function drawItemIcon(
   }
   if (type === 'ore') {
     drawOreDots(ctx, sx, sy, colors.primary);
+    return;
+  }
+  if (type === 'sword') {
+    drawSwordIcon(ctx, TILE, sx, sy, colors);
     return;
   }
   const size = Math.max(4, Math.round(TILE * 0.4));
