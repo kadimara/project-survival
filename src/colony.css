@@ -180,7 +180,7 @@ canvas#game {
   opacity: 1;
 }
 
-.switch-caste-btn {
+.toolbar-btn {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border-strong);
@@ -194,11 +194,11 @@ canvas#game {
   align-items: center;
   gap: 5px;
 }
-.switch-caste-btn:hover {
+.toolbar-btn:hover {
   background: var(--accent-dim);
   border-color: var(--accent);
 }
-.world-map-panel .switch-caste-btn {
+.world-map-panel .toolbar-btn {
   flex: 0 0 auto;
 }
 
