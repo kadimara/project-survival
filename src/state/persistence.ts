@@ -16,6 +16,7 @@ import type {
   GameRefs,
   GameState,
   GroundItem,
+  ItemType,
   PlantedSeed,
   Player,
   Smelter,
@@ -85,6 +86,46 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
+// ground items are sparse (a couple hundred scattered across thousands of
+// cells at most), so a dense per-cell grid like the tile grid above would
+// waste space on all the empty cells — instead each item is 3 plain numbers
+// (x, y, item-type id) flattened into one array, which drops the repeated
+// "x"/"y"/"type" object keys and the redundant "x,y" string key that the
+// old [key, {x,y,type}][] shape paid for on every entry
+const ITEM_TO_ID: Record<ItemType, number> = {
+  energy: 1,
+  energySeed: 2,
+  ore: 3,
+  ingot: 4,
+};
+const ID_TO_ITEM: (ItemType | undefined)[] = [
+  undefined,
+  'energy',
+  'energySeed',
+  'ore',
+  'ingot',
+];
+
+function encodeGroundItems(items: Map<string, GroundItem>): number[] {
+  const flat: number[] = [];
+  for (const item of items.values()) {
+    flat.push(item.x, item.y, ITEM_TO_ID[item.type]);
+  }
+  return flat;
+}
+
+function decodeGroundItems(flat: number[]): Map<string, GroundItem> {
+  const items = new Map<string, GroundItem>();
+  for (let i = 0; i < flat.length; i += 3) {
+    const x = flat[i],
+      y = flat[i + 1];
+    const type = ID_TO_ITEM[flat[i + 2]];
+    if (!type) continue;
+    items.set(x + ',' + y, { x, y, type });
+  }
+  return items;
+}
+
 interface SavedEnemy {
   tileX: number;
   tileY: number;
@@ -109,7 +150,7 @@ interface SavedPlayer {
 interface SaveData {
   seed: number;
   tilesGrid: string;
-  groundItems: [string, GroundItem][];
+  groundItems: number[];
   seeds: [string, PlantedSeed][];
   smelters: [string, Smelter][];
   enemies: SavedEnemy[];
@@ -121,7 +162,7 @@ export function saveGame(state: GameState): void {
   const data: SaveData = {
     seed: state.seed,
     tilesGrid: encodeTilesGrid(state.tiles),
-    groundItems: Array.from(state.groundItems.entries()),
+    groundItems: encodeGroundItems(state.groundItems),
     seeds: Array.from(state.seeds.entries()),
     smelters: Array.from(state.smelters.entries()),
     enemies: state.enemies.map((e) => ({
@@ -217,7 +258,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     rng: mulberry32(data.seed),
     map,
     tiles,
-    groundItems: new Map(data.groundItems),
+    groundItems: decodeGroundItems(data.groundItems),
     seeds: new Map(data.seeds),
     smelters: new Map(data.smelters),
     furnaces,
