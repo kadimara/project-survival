@@ -17,6 +17,8 @@ A browser-based top-down survival game: a single player character explores a pro
 
 Tests are colocated `*.test.ts` files next to the module they cover (e.g. `src/systems/combat.test.ts`); shared `GameState`/`HudRefs` test fixtures live in `src/test/fixtures.ts`. Coverage currently targets the pure-logic `systems/` modules (`pathfinding`, `combine`, `farming`, `smelting`, `combat`) — rendering, DOM, and `game.ts`'s orchestration are untested by design, not oversight. `prepare`/husky + lint-staged run Prettier on staged files at commit time.
 
+**When implementing a feature or bug fix that touches a pure-logic module** (anything shaped like `(state, ...) -> mutation`, currently the `systems/` modules listed above plus any new ones with the same shape), add or update its `*.test.ts` file in the same change — new exported functions and new branches in existing ones should land with tests, not as a follow-up. Reuse `src/test/fixtures.ts` rather than hand-rolling a new `GameState`/`HudRefs` fixture per file. Changes confined to `render/`, `ui/`, or `game.ts`'s DOM/canvas wiring don't need tests under this suite.
+
 ## Architecture
 
 `GameState` (defined in `src/types/types.ts`) is a single mutable object holding all simulation state — map/stone, food items, enemies, the player, floating combat text, camera/zoom/UI flags. Every module takes `state` as an explicit parameter instead of closing over module-level variables, so dependencies between files are visible from imports alone. `src/game.ts` is the only place that owns a `GameState` instance; everything else is a pure function of `(state, ...)` in, mutation out.
