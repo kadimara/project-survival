@@ -3,10 +3,14 @@
 // isn't persisted — it's cheap to rebuild (buildMap is a pure function of
 // MAP_W/MAP_H) — but `state.tiles` is saved in full rather than replayed
 // from the seed, since it already reflects everything the player has dug up
-// or placed since world-gen ran. Transient per-frame/interaction fields
-// (paths, pending actions, attack targets, timers keyed off the old
-// performance.now() epoch) are deliberately dropped on load and rebuilt
-// fresh, the same way createGameState/regenerateWorld initialize them.
+// or placed since world-gen ran. It's stored as a dense one-byte-per-cell
+// grid rather than a sparse [key, type][] list: a solid cave is mostly
+// "stone", so a per-cell byte (base64-encoded) runs an order of magnitude
+// smaller than repeating "stone" and an "x,y" string per tile. Transient
+// per-frame/interaction fields (paths, pending actions, attack targets,
+// timers keyed off the old performance.now() epoch) are deliberately
+// dropped on load and rebuilt fresh, the same way
+// createGameState/regenerateWorld initialize them.
 import type {
   Dir,
   GameRefs,
@@ -23,6 +27,63 @@ import { buildGroundAtlas } from '../render/ground-atlas';
 import { makeEnemy } from '../entities/entities';
 
 const SAVE_KEY = 'project-survival-save-v1';
+
+// grid-cell byte id, 0 = no tile (open ground). Room for 255 tile types
+// before this needs to grow past one byte per cell.
+const TILE_TO_ID: Record<TileType, number> = { stone: 1, soil: 2, furnace: 3 };
+const ID_TO_TILE: (TileType | undefined)[] = [
+  undefined,
+  'stone',
+  'soil',
+  'furnace',
+];
+
+function encodeTilesGrid(tiles: Map<string, TileType>): string {
+  const bytes = new Uint8Array(MAP_W * MAP_H);
+  for (const [key, type] of tiles) {
+    const [x, y] = key.split(',').map(Number);
+    bytes[y * MAP_W + x] = TILE_TO_ID[type];
+  }
+  return bytesToBase64(bytes);
+}
+
+function decodeTilesGrid(b64: string): {
+  tiles: Map<string, TileType>;
+  furnaces: Map<string, { x: number; y: number }>;
+} {
+  const bytes = base64ToBytes(b64);
+  const tiles = new Map<string, TileType>();
+  const furnaces = new Map<string, { x: number; y: number }>();
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const type = ID_TO_TILE[bytes[y * MAP_W + x]];
+      if (!type) continue;
+      const key = x + ',' + y;
+      tiles.set(key, type);
+      if (type === 'furnace') furnaces.set(key, { x, y });
+    }
+  }
+  return { tiles, furnaces };
+}
+
+// chunked to stay well under the argument-count limit String.fromCharCode
+// would otherwise hit if spread across a million-plus byte array at once
+const BASE64_CHUNK = 0x8000;
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += BASE64_CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 interface SavedEnemy {
   tileX: number;
@@ -47,7 +108,7 @@ interface SavedPlayer {
 
 interface SaveData {
   seed: number;
-  tiles: [string, TileType][];
+  tilesGrid: string;
   groundItems: [string, GroundItem][];
   seeds: [string, PlantedSeed][];
   smelters: [string, Smelter][];
@@ -59,7 +120,7 @@ interface SaveData {
 export function saveGame(state: GameState): void {
   const data: SaveData = {
     seed: state.seed,
-    tiles: Array.from(state.tiles.entries()),
+    tilesGrid: encodeTilesGrid(state.tiles),
     groundItems: Array.from(state.groundItems.entries()),
     seeds: Array.from(state.seeds.entries()),
     smelters: Array.from(state.smelters.entries()),
@@ -113,13 +174,7 @@ export function loadGame(refs: GameRefs): GameState | null {
   }
 
   const map = buildMap(MAP_W, MAP_H);
-  const tiles = new Map<string, TileType>(data.tiles);
-  const furnaces = new Map<string, { x: number; y: number }>();
-  for (const key of tiles.keys()) {
-    if (tiles.get(key) !== 'furnace') continue;
-    const [x, y] = key.split(',').map(Number);
-    furnaces.set(key, { x, y });
-  }
+  const { tiles, furnaces } = decodeTilesGrid(data.tilesGrid);
 
   const sp = data.player;
   const player: Player = {
