@@ -196,7 +196,7 @@ export function initColonyGame(): void {
         player.path = [];
         player.pendingAction = null;
         player.attackTarget = null;
-        tryMove(state, hud, dir, walkableFn, now);
+        tryMove(state, hud, dir, walkableFn);
       } else if (player.attackTarget && player.attackTarget.hp > 0) {
         const t = player.attackTarget;
         if (isAdjacent(player.tileX, player.tileY, t.tileX, t.tileY)) {
@@ -217,16 +217,14 @@ export function initColonyGame(): void {
           if (player.path.length) {
             const next = player.path.shift()!;
             const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-            if (
-              !tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn, now)
-            )
+            if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
               player.path = [];
           }
         }
       } else if (player.path.length) {
         const next = player.path.shift()!;
         const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-        if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn, now))
+        if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
           player.path = [];
       }
     }

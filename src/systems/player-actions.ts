@@ -45,13 +45,12 @@ export function tryPlayerStep(
   ny: number,
   dir: Dir,
   walkable: Walkable,
-  now: number,
 ): boolean {
   const { player } = state;
   if (!walkable(nx, ny)) return false;
   player.moveDur = player.held ? PLAYER_CARRY_MOVE_DUR : BASE_MOVE_DUR;
   startStep(player, nx, ny, dir);
-  spendMoveHp(state, hud, now);
+  spendMoveHp(state, hud);
   return true;
 }
 
@@ -60,7 +59,6 @@ export function tryMove(
   hud: HudRefs,
   dir: Dir,
   walkable: Walkable,
-  now: number,
 ): void {
   let dx = 0,
     dy = 0;
@@ -76,7 +74,6 @@ export function tryMove(
     player.tileY + dy,
     dir,
     walkable,
-    now,
   );
 }
 
