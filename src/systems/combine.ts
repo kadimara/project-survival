@@ -10,7 +10,9 @@ export interface CombineRecipe {
 }
 
 // filled in as recipes are defined — empty is a valid, fully working state
-export const RECIPES: CombineRecipe[] = [];
+export const RECIPES: CombineRecipe[] = [
+  { held: 'stone', target: 'stone', result: 'furnace' },
+];
 
 function recipeKey(held: CarryType, target: CarryType): string {
   return held + '|' + target;

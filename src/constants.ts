@@ -20,29 +20,43 @@ export const ZOOM_LEVELS: ZoomLevel[] = [
 export const DEFAULT_ZOOM_INDEX = 1;
 
 export const WORLD_TILE = 4;
-export const INITIAL_FOOD_COUNT = 100;
+export const INITIAL_ENERGY_SEED_COUNT = 100;
 
 // ---- tile defs: the grid layer (solid, atlas-baked). pickable is checked
 // by doPickup — every current tile is pickable, but the flag exists so a
 // future non-pickable solid type (e.g. a boundary wall) has somewhere to
-// say so ----
+// say so. allowGroundItem marks whether the ground-item layer can also be
+// occupied at the tile's cell (soil does, so a ground item — a planted
+// crop — can sit on top of it; stone/ore don't) ----
 export const TILE_DEFS: Record<
   TileType,
   {
     solid: boolean;
     pickable: boolean;
+    allowGroundItem: boolean;
     colors: { primary: string; secondary: string };
   }
 > = {
   stone: {
     solid: true,
     pickable: true,
+    allowGroundItem: false,
     colors: { primary: '#8a8478', secondary: '#5e594e' },
   },
-  ore: {
+  soil: {
     solid: true,
     pickable: true,
-    colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
+    allowGroundItem: true,
+    colors: { primary: '#6b4a30', secondary: '#43301f' },
+  },
+  // built by combining two stone tiles (see combine.ts) — not part of
+  // procedural generation. allowGroundItem lets any item be dumped
+  // straight onto it, same as soil (see systems/smelting.ts)
+  furnace: {
+    solid: true,
+    pickable: true,
+    allowGroundItem: true,
+    colors: { primary: '#c65a2e', secondary: '#5a2c17' },
   },
 };
 
@@ -54,7 +68,35 @@ export const ITEM_DEFS: Record<
   energy: {
     colors: { primary: '#e8c44f', secondary: '#a8862f' },
   },
+  // same colors as energy on purpose — a planted seed and the energy it
+  // grows are distinguished by render shape (scattered dots vs a solid
+  // square, see render.ts), not by color
+  energySeed: {
+    colors: { primary: '#e8c44f', secondary: '#a8862f' },
+  },
+  // ore and the ingot it smelts into share colors on purpose, same as
+  // energy/energySeed above
+  ore: {
+    colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
+  },
+  ingot: {
+    colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
+  },
 };
+
+// ---- soil farming: an energySeed planted on soil spawns an energy item on
+// the same cell after ENERGY_SEED_GROW_MS (if the cell doesn't already have
+// one); harvesting that energy restarts the seed's timer, so a seed keeps
+// producing renewably as long as it's kept picked (systems/farming.ts) ----
+export const ENERGY_SEED_GROW_MS = 10000;
+
+// ---- furnace: ore placed on a furnace tile becomes an ingot after
+// ORE_SMELT_MS; any other item placed there melts away after ITEM_MELT_MS
+// unless it survives (see FURNACE_SURVIVORS in systems/smelting.ts). The
+// player can pick the original item back up any time before its timer
+// fires, canceling the job. ----
+export const ORE_SMELT_MS = 5000;
+export const ITEM_MELT_MS = 2000;
 
 // looks up the primary color for anything the player can carry, whichever
 // def table (TILE_DEFS or ITEM_DEFS) it belongs to

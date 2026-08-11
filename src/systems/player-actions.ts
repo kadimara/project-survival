@@ -1,10 +1,11 @@
 // Player action resolution: movement, picking up/placing obstacles and
 // food, and attacking enemies. Raw key tracking (which keys are currently
 // held) lives in input/player-input.ts.
-import type { Dir, GameState, HudRefs, Point, TileType } from '../types/types';
+import type { Dir, GameState, HudRefs, ItemType, Point } from '../types/types';
 import {
   BASE_MOVE_DUR,
   carryColor,
+  ENERGY_SEED_GROW_MS,
   PLAYER_ATK_COOLDOWN,
   PLAYER_ATK_DAMAGE,
   PLAYER_CARRY_MOVE_DUR,
@@ -14,6 +15,7 @@ import {
 import {
   isEnemyAt,
   occupantAt,
+  openForGroundItem,
   setOccupant,
   setTile,
   spawnFloatingText,
@@ -28,6 +30,8 @@ import {
 } from './pathfinding';
 import { killEnemy } from './combat';
 import { tryCombine } from './combine';
+import { plantSeed } from './farming';
+import { dumpInFurnace } from './smelting';
 import { updateHud } from '../ui/hud';
 
 // advances the player one tile onto open ground. Returns false if the tile
@@ -74,17 +78,67 @@ export function doPickup(
   y: number,
 ): void {
   const { player } = state;
-  const kind = occupantAt(state, x, y);
-  if (!kind) return;
   const key = x + ',' + y;
-  if (state.tiles.has(key)) {
-    if (!TILE_DEFS[kind as TileType].pickable) return;
-    setTile(state, x, y, null);
-  } else {
+
+  // a ground item (e.g. energy a seed grew) sits on top of the tile layer,
+  // so it takes priority: picking up harvests the item and leaves the tile
+  // (and any seed underneath it) behind
+  const item = state.groundItems.get(key);
+  if (item) {
     state.groundItems.delete(key);
+    player.held = item.type;
+    // harvesting the energy a seed produced restarts its grow timer, so
+    // the same seed keeps producing as long as it's kept picked
+    const producingSeed = state.seeds.get(key);
+    if (producingSeed)
+      producingSeed.readyAt = performance.now() + ENERGY_SEED_GROW_MS;
+    spawnFloatingText(
+      state,
+      player,
+      'picked up ' + item.type,
+      carryColor(item.type),
+    );
+    updateHud(state, hud);
+    return;
   }
-  player.held = kind;
-  spawnFloatingText(state, player, 'picked up ' + kind, carryColor(kind));
+
+  // an item mid-smelt/mid-melt on a furnace can be reclaimed as-is any
+  // time before its timer fires, canceling the job
+  const job = state.smelters.get(key);
+  if (job) {
+    state.smelters.delete(key);
+    player.held = job.item;
+    spawnFloatingText(
+      state,
+      player,
+      'picked up ' + job.item,
+      carryColor(job.item),
+    );
+    updateHud(state, hud);
+    return;
+  }
+
+  // no loose item here — a bare (not-yet-grown, or already-harvested)
+  // planted seed is reachable and pickable in its own right
+  const seed = state.seeds.get(key);
+  if (seed) {
+    state.seeds.delete(key);
+    player.held = 'energySeed';
+    spawnFloatingText(
+      state,
+      player,
+      'picked up energySeed',
+      carryColor('energySeed'),
+    );
+    updateHud(state, hud);
+    return;
+  }
+
+  const tile = state.tiles.get(key);
+  if (!tile || !TILE_DEFS[tile].pickable) return;
+  setTile(state, x, y, null);
+  player.held = tile;
+  spawnFloatingText(state, player, 'picked up ' + tile, carryColor(tile));
   updateHud(state, hud);
 }
 
@@ -98,6 +152,42 @@ export function doPlace(
   if (!terrainWalkable(state, x, y) || isEnemyAt(state, x, y) || !player.held)
     return;
   const held = player.held;
+
+  // soil and furnace both allow a ground item to drop straight onto them
+  // without needing an empty cell or a combine recipe. A furnace dump is
+  // consumed — what's left depends on the item, see systems/smelting.ts.
+  // On soil, an energySeed gets planted (tracked separately, see
+  // systems/farming.ts) and anything else just sits there as a plain loose
+  // item, same as any other ground item.
+  if (!(held in TILE_DEFS) && openForGroundItem(state, x, y)) {
+    const item = held as ItemType;
+    if (state.tiles.get(x + ',' + y) === 'furnace') {
+      const outcome = dumpInFurnace(state, x, y, item, performance.now());
+      const text =
+        outcome === 'smelting'
+          ? 'smelting ' + item
+          : outcome === 'survived'
+            ? 'placed ' + item
+            : 'melting ' + item;
+      spawnFloatingText(
+        state,
+        player,
+        text,
+        outcome === 'destroyed' ? '#ff6b35' : carryColor(item),
+      );
+    } else {
+      if (item === 'energySeed') {
+        plantSeed(state, x, y, performance.now());
+      } else {
+        state.groundItems.set(x + ',' + y, { x, y, type: item });
+      }
+      spawnFloatingText(state, player, 'placed ' + item, '#ecdfc4');
+    }
+    player.held = null;
+    updateHud(state, hud);
+    return;
+  }
+
   const target = occupantAt(state, x, y);
 
   if (target === null) {
@@ -150,8 +240,12 @@ export function tryPlaceAt(
 ): void {
   const { player } = state;
   if (!terrainWalkable(state, x, y) || !player.held) return;
-  const target = occupantAt(state, x, y);
-  if (target !== null && tryCombine(player.held, target) === null) return;
+  const dropsOnSoil =
+    !(player.held in TILE_DEFS) && openForGroundItem(state, x, y);
+  if (!dropsOnSoil) {
+    const target = occupantAt(state, x, y);
+    if (target !== null && tryCombine(player.held, target) === null) return;
+  }
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
     doPlace(state, hud, x, y);
     return;

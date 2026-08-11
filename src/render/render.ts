@@ -16,7 +16,18 @@ import {
 } from '../constants';
 import { getClampedCamX, getClampedCamY } from './camera';
 import { tileAt } from '../state/state';
-import { drawHpBar, drawSquareEntity } from './rendering';
+import {
+  drawFurnaceGlow,
+  drawHpBar,
+  drawItemIcon,
+  drawScatteredDots,
+  drawSquareEntity,
+} from './rendering';
+
+// per-tile pseudo-random phase so several furnaces don't flicker in lockstep
+function furnacePhase(x: number, y: number): number {
+  return (x * 12.9898 + y * 78.233) % (Math.PI * 2);
+}
 
 export function renderWorldMap(state: GameState): void {
   const { worldCanvas, worldCtx } = state.refs;
@@ -74,6 +85,16 @@ export function render(state: GameState, now: number): void {
     canvas.height,
   );
 
+  // the furnace body is baked into the atlas above as plain stone; only
+  // its firebox glow is redrawn each frame here so it can flicker
+  for (const furnace of state.furnaces.values()) {
+    const sx = furnace.x * TILE - camX,
+      sy = furnace.y * TILE - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    drawFurnaceGlow(ctx, TILE, sx, sy, now, furnacePhase(furnace.x, furnace.y));
+  }
+
   for (const step of player.path) {
     const cx = step.x * TILE + TILE / 2 - camX,
       cy = step.y * TILE + TILE / 2 - camY;
@@ -83,19 +104,40 @@ export function render(state: GameState, now: number): void {
     ctx.fill();
   }
 
+  // drawn before groundItems so a seed's scattered dots sit visually
+  // "under" the energy square it produces, when both are on the same cell
+  for (const seed of state.seeds.values()) {
+    const sx = seed.x * TILE - camX,
+      sy = seed.y * TILE - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    drawScatteredDots(ctx, sx, sy, ITEM_DEFS.energySeed.colors.primary);
+  }
+
+  // a furnace job mid-timer renders exactly like the item it started
+  // from, so the cell reads as "still that item, just working" until it
+  // resolves into whatever's left (see systems/smelting.ts)
+  for (const smelter of state.smelters.values()) {
+    const sx = smelter.x * TILE - camX,
+      sy = smelter.y * TILE - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    drawItemIcon(
+      ctx,
+      TILE,
+      sx,
+      sy,
+      smelter.item,
+      ITEM_DEFS[smelter.item].colors,
+    );
+  }
+
   for (const item of state.groundItems.values()) {
     const sx = item.x * TILE - camX,
       sy = item.y * TILE - camY;
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
-    const size = Math.max(4, Math.round(TILE * 0.4));
-    const ix = sx + (TILE - size) / 2,
-      iy = sy + (TILE - size) / 2;
-    const { primary, secondary } = ITEM_DEFS[item.type].colors;
-    ctx.fillStyle = secondary;
-    ctx.fillRect(ix - 1, iy - 1, size + 2, size + 2);
-    ctx.fillStyle = primary;
-    ctx.fillRect(ix, iy, size, size);
+    drawItemIcon(ctx, TILE, sx, sy, item.type, ITEM_DEFS[item.type].colors);
   }
 
   for (const enemy of state.enemies) {
