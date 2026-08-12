@@ -1,9 +1,9 @@
 // Enemy AI: wander until the player is sighted, then chase and attack.
 import type { Enemy, GameState, HudRefs, Player } from '../types/types';
 import {
-  DUMMY_ATK_COOLDOWN,
+  DUMMY_ATK_COOLDOWN_TICKS,
   ENEMY_AGGRO_RADIUS,
-  ENEMY_ATK_COOLDOWN,
+  ENEMY_ATK_COOLDOWN_TICKS,
   ENEMY_ATK_DAMAGE,
   ENEMY_LOSE_AGGRO_MS,
   ENEMY_REPATH_MS,
@@ -49,9 +49,13 @@ function attemptEnemyAttack(
   enemy: Enemy,
   now: number,
 ): void {
-  const cooldown = enemy.stationary ? DUMMY_ATK_COOLDOWN : ENEMY_ATK_COOLDOWN;
-  if (now - enemy.lastAttack < cooldown) return;
-  enemy.lastAttack = now;
+  const cooldownTicks = enemy.stationary
+    ? DUMMY_ATK_COOLDOWN_TICKS
+    : ENEMY_ATK_COOLDOWN_TICKS;
+  // gated against state.tick, not `now` — see PLAYER_ATK_COOLDOWN_TICKS's
+  // comment in constants.ts
+  if (state.tick < enemy.nextAttackAt) return;
+  enemy.nextAttackAt = state.tick + cooldownTicks;
   enemy.flashUntil = now + HIT_FLASH_MS;
   damagePlayer(state, hud, ENEMY_ATK_DAMAGE, now, enemy);
 }

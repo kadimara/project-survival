@@ -130,7 +130,9 @@ export function initColonyGame(): void {
   setupPlayerInput(state);
 
   // ---- use held item ----
-  hud.useItemBtn.addEventListener('click', () => useHeldItem(state, hud));
+  hud.useItemBtn.addEventListener('click', () => {
+    state.player.pendingUse = true;
+  });
 
   // ---- hover + click on the main canvas ----
   canvas.addEventListener('mousemove', (e) => {
@@ -238,6 +240,14 @@ export function initColonyGame(): void {
     state.tick++;
     const { player } = state;
     handlePlayerAttacked(state);
+    // resolved unconditionally, every tick, independent of the
+    // movement/attack/pendingAction chain below — using an item (e.g.
+    // healing) must work even mid-chase or mid-attack, not get starved by
+    // them the way a pickup/place pendingAction would
+    if (player.pendingUse) {
+      useHeldItem(state, hud);
+      player.pendingUse = false;
+    }
     const dir = heldDir();
     if (dir) {
       player.path = [];

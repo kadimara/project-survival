@@ -141,19 +141,22 @@ export const PLAYER_MAX_HP = 100;
 // attemptEnemyAttack, and player-actions.ts's attemptPlayerAttack)
 export const HIT_FLASH_MS = 140;
 export const PLAYER_ATK_DAMAGE = 3;
-// 1 tick — attack cooldowns are only re-checked once per simulation tick
-// (see game.ts's simulateTick), so this must be a whole multiple of TICK_MS
-export const PLAYER_ATK_COOLDOWN = 250;
+// measured in whole ticks (state.tick), not ms — attack cooldowns are
+// gated against state.tick (see attemptPlayerAttack in
+// systems/player-actions.ts), not wall-clock time, so cadence stays exact
+// regardless of frame timing/hitches instead of drifting like a
+// performance.now() comparison would
+export const PLAYER_ATK_COOLDOWN_TICKS = 4;
 
 // a weapon is "equipped" simply by being held (see attemptPlayerAttack in
 // systems/player-actions.ts) — no separate equip slot, so wielding one
 // means your one carry slot isn't free for hauling ore/energy/etc. Only
-// item types listed here override the unarmed PLAYER_ATK_DAMAGE/COOLDOWN
+// item types listed here override the unarmed PLAYER_ATK_DAMAGE/COOLDOWN_TICKS
 // above; anything else held attacks unarmed.
 export const WEAPON_DEFS: Partial<
-  Record<ItemType, { damage: number; cooldown: number }>
+  Record<ItemType, { damage: number; cooldownTicks: number }>
 > = {
-  sword: { damage: 6, cooldown: 250 }, // 1 tick
+  sword: { damage: 6, cooldownTicks: 4 },
 };
 // hp spent per tile the player steps onto, however the step was triggered
 // (keyboard, click-to-move, or auto-pathing toward an attack target)
@@ -169,14 +172,16 @@ export const ENERGY_HEAL_AMOUNT = 50;
 export const ENEMY_COUNT = 20;
 export const ENEMY_MAX_HP = 10;
 export const ENEMY_ATK_DAMAGE = 2;
-// 2 ticks — see PLAYER_ATK_COOLDOWN's comment on tick-alignment
-export const ENEMY_ATK_COOLDOWN = 500;
+// in ticks — see PLAYER_ATK_COOLDOWN_TICKS's comment on why this is
+// gated against state.tick rather than wall-clock time
+export const ENEMY_ATK_COOLDOWN_TICKS = 2;
 export const ENEMY_AGGRO_RADIUS = 5;
 export const ENEMY_LOSE_AGGRO_MS = 4000;
 export const ENEMY_WANDER_MIN_MS = 1200;
 export const ENEMY_WANDER_MAX_MS = 3000;
 export const ENEMY_WANDER_RADIUS = 4;
-// 1 tick — see PLAYER_ATK_COOLDOWN's comment on tick-alignment
+// 1 tick — throttles repathing only, so unlike the attack cooldowns above
+// it's fine to stay wall-clock/ms rather than gated on state.tick
 export const ENEMY_REPATH_MS = 250;
 export const ENEMY_SPAWN_MIN_DIST = 10; // keep initial spawns away from the player's start
 
@@ -185,4 +190,7 @@ export const ENEMY_SPAWN_MIN_DIST = 10; // keep initial spawns away from the pla
 // but on a much slower cooldown, and never wanders/chases.
 export const DUMMY_SPAWN_DX = 0;
 export const DUMMY_SPAWN_DY = 2; // within buildStones' spawn-safety bubble, so always open ground
-export const DUMMY_ATK_COOLDOWN = 3000;
+// in ticks (12 ticks == 3000ms at the current TICK_MS) — see
+// PLAYER_ATK_COOLDOWN_TICKS's comment on why this is gated against
+// state.tick rather than wall-clock time
+export const DUMMY_ATK_COOLDOWN_TICKS = 12;

@@ -5,8 +5,8 @@ import {
   createTestHudRefs,
 } from '../test/fixtures';
 import {
-  DUMMY_ATK_COOLDOWN,
-  ENEMY_ATK_COOLDOWN,
+  DUMMY_ATK_COOLDOWN_TICKS,
+  ENEMY_ATK_COOLDOWN_TICKS,
   ENEMY_ATK_DAMAGE,
 } from '../constants';
 import { updateEnemy } from './ai';
@@ -63,15 +63,17 @@ describe('updateEnemy: stationary (training dummy)', () => {
     state.player.tileY = 10;
     const hpBefore = state.player.hp;
 
-    // lastAttack starts at 0, so `now` needs to clear DUMMY_ATK_COOLDOWN
-    // before the first retaliation is allowed to land
-    updateEnemy(state, hud, dummy, DUMMY_ATK_COOLDOWN, alwaysWalkable);
+    // nextAttackAt starts at tick 0, same as state.tick, so the first
+    // retaliation is never blocked by cooldown — cooldowns are gated on
+    // state.tick, not the `now` wall-clock param, so cadence stays exact
+    // regardless of frame timing
+    updateEnemy(state, hud, dummy, 1000, alwaysWalkable);
 
     expect(state.player.hp).toBe(hpBefore - ENEMY_ATK_DAMAGE);
-    expect(dummy.lastAttack).toBe(DUMMY_ATK_COOLDOWN);
+    expect(dummy.nextAttackAt).toBe(DUMMY_ATK_COOLDOWN_TICKS);
   });
 
-  it('uses DUMMY_ATK_COOLDOWN (slower than a regular enemy) between retaliations', () => {
+  it('uses DUMMY_ATK_COOLDOWN_TICKS (slower than a regular enemy) between retaliations', () => {
     const state = createTestGameState();
     const hud = createTestHudRefs();
     const dummy = createTestEnemy(10, 10, {
@@ -82,20 +84,17 @@ describe('updateEnemy: stationary (training dummy)', () => {
     state.player.tileX = 11;
     state.player.tileY = 10;
 
-    updateEnemy(state, hud, dummy, DUMMY_ATK_COOLDOWN, alwaysWalkable);
+    updateEnemy(state, hud, dummy, 1000, alwaysWalkable); // first hit at tick 0
     const hpAfterFirstHit = state.player.hp;
 
     // long enough to beat a regular enemy's cooldown, but not the dummy's
-    updateEnemy(
-      state,
-      hud,
-      dummy,
-      DUMMY_ATK_COOLDOWN + ENEMY_ATK_COOLDOWN + 1,
-      alwaysWalkable,
-    );
+    // (nextAttackAt is DUMMY_ATK_COOLDOWN_TICKS after the first hit)
+    state.tick = ENEMY_ATK_COOLDOWN_TICKS + 1;
+    updateEnemy(state, hud, dummy, 1000, alwaysWalkable);
     expect(state.player.hp).toBe(hpAfterFirstHit); // still on cooldown, no second hit
 
-    updateEnemy(state, hud, dummy, DUMMY_ATK_COOLDOWN * 2, alwaysWalkable);
+    state.tick = DUMMY_ATK_COOLDOWN_TICKS;
+    updateEnemy(state, hud, dummy, 1000, alwaysWalkable);
     expect(state.player.hp).toBe(hpAfterFirstHit - ENEMY_ATK_DAMAGE);
   });
 
@@ -132,7 +131,7 @@ describe('updateEnemy: mid-move (tick-based)', () => {
     state.player.tileY = 10;
     const hpBefore = state.player.hp;
 
-    updateEnemy(state, hud, dummy, DUMMY_ATK_COOLDOWN, alwaysWalkable);
+    updateEnemy(state, hud, dummy, 1000, alwaysWalkable);
 
     expect(state.player.hp).toBe(hpBefore - ENEMY_ATK_DAMAGE);
     expect(dummy.moving).toBe(true); // animation state is untouched by this function

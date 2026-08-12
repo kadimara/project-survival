@@ -5,7 +5,7 @@ import {
   createTestHudRefs,
 } from '../test/fixtures';
 import {
-  PLAYER_ATK_COOLDOWN,
+  PLAYER_ATK_COOLDOWN_TICKS,
   PLAYER_ATK_DAMAGE,
   PLAYER_ATK_HP_COST,
 } from '../constants';
@@ -46,7 +46,11 @@ describe('attemptPlayerAttack', () => {
     attemptPlayerAttack(state, hud, 1000);
 
     expect(enemy.hp).toBe(enemy.maxHp - 6);
-    expect(state.player.lastAttack).toBe(1000);
+    // nextAttackAt tracks state.tick, not the `now` wall-clock arg — see
+    // PLAYER_ATK_COOLDOWN_TICKS's comment in constants.ts
+    expect(state.player.nextAttackAt).toBe(
+      state.tick + PLAYER_ATK_COOLDOWN_TICKS,
+    );
   });
 
   it('falls back to unarmed stats for a held item with no WEAPON_DEFS entry', () => {
@@ -68,7 +72,8 @@ describe('attemptPlayerAttack', () => {
     state.player.attackTarget = enemy;
 
     attemptPlayerAttack(state, hud, 1000);
-    attemptPlayerAttack(state, hud, 1000 + PLAYER_ATK_COOLDOWN - 1);
+    state.tick = PLAYER_ATK_COOLDOWN_TICKS - 1;
+    attemptPlayerAttack(state, hud, 1000);
 
     expect(enemy.hp).toBe(enemy.maxHp - PLAYER_ATK_DAMAGE); // second hit was too soon
   });
@@ -93,7 +98,8 @@ describe('attemptPlayerAttack', () => {
 
     attemptPlayerAttack(state, hud, 1000);
     const hpAfterFirstHit = state.player.hp;
-    attemptPlayerAttack(state, hud, 1000 + PLAYER_ATK_COOLDOWN - 1);
+    state.tick = PLAYER_ATK_COOLDOWN_TICKS - 1;
+    attemptPlayerAttack(state, hud, 1000);
 
     expect(state.player.hp).toBe(hpAfterFirstHit);
   });

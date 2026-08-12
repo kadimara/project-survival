@@ -73,9 +73,20 @@ export type PendingAction =
 export interface Player extends Actor {
   held: CarryType | null;
   pendingAction: PendingAction | null;
+  // set by the "Use item" button; resolved on the next simulation tick
+  // (see game.ts's simulateTick) rather than instantly on click, same
+  // deferred-resolution convention as pendingAction above. Kept separate
+  // from pendingAction/attackTarget rather than folded into the same
+  // movement/attack priority chain, since using an item (e.g. healing)
+  // needs to work even while chasing or mid-attack, not get starved by them.
+  pendingUse: boolean;
   attacked: boolean;
   attackTarget: Enemy | null;
-  lastAttack: number;
+  // tick count (state.tick) at which the next attack becomes allowed, same
+  // readyAt-style pattern as Seed/SmeltJob above — gated against state.tick
+  // rather than a ms timestamp so attack cadence stays exact regardless of
+  // frame timing (see attemptPlayerAttack in systems/player-actions.ts)
+  nextAttackAt: number;
   hp: number;
   maxHp: number;
   flashUntil: number;
@@ -88,7 +99,8 @@ export interface Enemy extends Actor {
   target: Player | null;
   nextWanderAt: number;
   nextRepathAt: number;
-  lastAttack: number;
+  // tick count (state.tick), same as Player.nextAttackAt above
+  nextAttackAt: number;
   aggroUntil: number;
   flashUntil: number;
   // true for the fixed training dummy near spawn: never wanders/chases and

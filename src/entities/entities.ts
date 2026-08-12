@@ -43,7 +43,7 @@ export function makeEnemy(x: number, y: number): Enemy {
       ENEMY_WANDER_MIN_MS +
       Math.random() * (ENEMY_WANDER_MAX_MS - ENEMY_WANDER_MIN_MS),
     nextRepathAt: 0,
-    lastAttack: 0,
+    nextAttackAt: 0,
     aggroUntil: 0,
     flashUntil: 0,
     stationary: false,

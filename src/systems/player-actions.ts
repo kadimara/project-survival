@@ -6,7 +6,7 @@ import {
   carryColor,
   ENERGY_HEAL_AMOUNT,
   ENERGY_SEED_GROW_TICKS,
-  PLAYER_ATK_COOLDOWN,
+  PLAYER_ATK_COOLDOWN_TICKS,
   PLAYER_ATK_DAMAGE,
   TICK_MS,
   TILE_DEFS,
@@ -313,9 +313,11 @@ export function attemptPlayerAttack(
   // unarmed damage/cooldown; anything else held (or nothing) attacks unarmed
   const weapon = player.held ? WEAPON_DEFS[player.held as ItemType] : undefined;
   const damage = weapon?.damage ?? PLAYER_ATK_DAMAGE;
-  const cooldown = weapon?.cooldown ?? PLAYER_ATK_COOLDOWN;
-  if (now - player.lastAttack < cooldown) return;
-  player.lastAttack = now;
+  const cooldownTicks = weapon?.cooldownTicks ?? PLAYER_ATK_COOLDOWN_TICKS;
+  // gated against state.tick, not `now`, so cadence is exact regardless of
+  // frame timing — see PLAYER_ATK_COOLDOWN_TICKS's comment in constants.ts
+  if (state.tick < player.nextAttackAt) return;
+  player.nextAttackAt = state.tick + cooldownTicks;
   damageEnemy(state, hud, t, damage, now);
   spendAttackHp(state, hud);
 }
