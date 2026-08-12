@@ -13,6 +13,7 @@ import {
   PLAYER_MAX_HP,
   SPAWN_X,
   SPAWN_Y,
+  TICK_MS,
   TILE,
 } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
@@ -66,7 +67,7 @@ export function createTestPlayer(overrides?: Partial<Player>): Player {
     dir: 'down',
     moving: false,
     moveStart: 0,
-    moveDur: 240,
+    moveDur: TICK_MS,
     fromX: 0,
     fromY: 0,
     toX: 0,

@@ -3,12 +3,12 @@
 // held) lives in input/player-input.ts.
 import type { Dir, GameState, HudRefs, ItemType, Point } from '../types/types';
 import {
-  BASE_MOVE_DUR,
   carryColor,
   ENERGY_HEAL_AMOUNT,
   ENERGY_SEED_GROW_MS,
   PLAYER_ATK_COOLDOWN,
   PLAYER_ATK_DAMAGE,
+  TICK_MS,
   TILE_DEFS,
   WEAPON_DEFS,
 } from '../constants';
@@ -47,7 +47,7 @@ export function tryPlayerStep(
 ): boolean {
   const { player } = state;
   if (!walkable(nx, ny)) return false;
-  player.moveDur = BASE_MOVE_DUR;
+  player.moveDur = TICK_MS;
   startStep(player, nx, ny, dir);
   spendMoveHp(state, hud);
   return true;

@@ -21,6 +21,7 @@ import {
   PLAYER_MAX_HP,
   SPAWN_X,
   SPAWN_Y,
+  TICK_MS,
   TILE,
   TILE_DEFS,
 } from '../constants';
@@ -344,7 +345,7 @@ export function createGameState(
       dir: 'down',
       moving: false,
       moveStart: 0,
-      moveDur: 240,
+      moveDur: TICK_MS,
       fromX: 0,
       fromY: 0,
       toX: 0,

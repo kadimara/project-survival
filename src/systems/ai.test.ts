@@ -109,3 +109,32 @@ describe('updateEnemy: stationary (training dummy)', () => {
     expect(dummy.hp).toBe(Infinity);
   });
 });
+
+describe('updateEnemy: mid-move (tick-based)', () => {
+  it('still makes a decision even while a previous step is visually animating', () => {
+    // tileX/tileY update instantly at step-start (see entities.ts's
+    // startStep) — `moving` only gates the cosmetic tween, which is now
+    // advanced centrally, once per rendered frame, from game.ts's frame().
+    // updateEnemy itself must run its decision logic unconditionally, once
+    // per simulation tick, regardless of `moving`: otherwise a frame hitch
+    // that lets more than one tick drain at once would silently waste every
+    // tick after the first (moving has no chance to reset mid-drain, since
+    // it's only updated once per frame, after all drained ticks run).
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const dummy = createTestEnemy(10, 10, {
+      stationary: true,
+      moving: true,
+      hp: Infinity,
+      maxHp: Infinity,
+    });
+    state.player.tileX = 11;
+    state.player.tileY = 10;
+    const hpBefore = state.player.hp;
+
+    updateEnemy(state, hud, dummy, DUMMY_ATK_COOLDOWN, alwaysWalkable);
+
+    expect(state.player.hp).toBe(hpBefore - ENEMY_ATK_DAMAGE);
+    expect(dummy.moving).toBe(true); // animation state is untouched by this function
+  });
+});

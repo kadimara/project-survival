@@ -23,7 +23,6 @@ import type {
   TileType,
 } from '../types/types';
 import {
-  BASE_MOVE_DUR,
   DUMMY_SPAWN_DX,
   DUMMY_SPAWN_DY,
   MAP_H,
@@ -31,6 +30,7 @@ import {
   PLAYER_MAX_HP,
   SPAWN_X,
   SPAWN_Y,
+  TICK_MS,
 } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { buildGroundAtlas } from '../render/ground-atlas';
@@ -247,7 +247,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     dir: sp.dir,
     moving: false,
     moveStart: 0,
-    moveDur: BASE_MOVE_DUR,
+    moveDur: TICK_MS,
     fromX: sp.tileX,
     fromY: sp.tileY,
     toX: sp.tileX,

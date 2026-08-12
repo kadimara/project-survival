@@ -9,12 +9,12 @@ import {
   DUMMY_SPAWN_DY,
   ENEMY_COUNT,
   ENEMY_MAX_HP,
-  ENEMY_MOVE_DUR,
   ENEMY_SPAWN_MIN_DIST,
   ENEMY_WANDER_MAX_MS,
   ENEMY_WANDER_MIN_MS,
   SPAWN_X,
   SPAWN_Y,
+  TICK_MS,
   TILE,
 } from '../constants';
 import { randomOpenTile } from '../state/state';
@@ -28,7 +28,7 @@ export function makeEnemy(x: number, y: number): Enemy {
     dir: 'down',
     moving: false,
     moveStart: 0,
-    moveDur: ENEMY_MOVE_DUR,
+    moveDur: TICK_MS,
     fromX: x,
     fromY: y,
     toX: x,

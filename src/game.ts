@@ -6,6 +6,7 @@ import {
   DEFAULT_ZOOM_INDEX,
   MAP_H,
   MAP_W,
+  TICK_MS,
   TILE,
   WORLD_TILE,
 } from './constants';
@@ -215,61 +216,90 @@ export function initColonyGame(): void {
   });
 
   // ---- main loop ----
-  function tick(now: number): void {
+  // Simulation (movement/attack/AI decisions) resolves on a fixed 600ms
+  // tick, OSRS-style; rendering still runs every animation frame and
+  // interpolates smoothly between tick states via updateActorAnimation.
+  let tickAccumulator = 0;
+  let lastFrameTime: number | null = null;
+
+  // Runs one tick's worth of decisions unconditionally — tileX/tileY update
+  // instantly at step-start (see entities.ts's startStep), so a tick is free
+  // to act even if the previous tick's step is still visually animating;
+  // `moving` only gates the cosmetic tween in frame() below. This matters
+  // when a frame hitch lets the accumulator drain more than one tick at
+  // once: gating on `moving` here would silently waste every tick after the
+  // first in that drain, since the animation flag has no chance to reset
+  // mid-drain (it's only updated once per frame, after the loop).
+  function simulateTick(now: number): void {
     const { player } = state;
     handlePlayerAttacked(state);
-    if (player.moving) {
-      updateActorAnimation(player, now);
-      if (!player.moving) onPlayerArrived(state, hud);
-    } else {
-      const dir = heldDir();
-      if (dir) {
-        player.path = [];
-        player.pendingAction = null;
-        player.attackTarget = null;
-        tryMove(state, hud, dir, walkableFn);
-      } else if (player.attackTarget && player.attackTarget.hp > 0) {
-        const t = player.attackTarget;
-        if (isAdjacent(player.tileX, player.tileY, t.tileX, t.tileY)) {
-          player.dir = dirBetween(player.tileX, player.tileY, t.tileX, t.tileY);
-          attemptPlayerAttack(state, hud, now);
-        } else {
-          if (player.path.length === 0) {
-            const p = bfsToAdjacent(
-              player.tileX,
-              player.tileY,
-              t.tileX,
-              t.tileY,
-              walkableFn,
-            );
-            if (p.length) player.path = p;
-            else player.attackTarget = null;
-          }
-          if (player.path.length) {
-            const next = player.path.shift()!;
-            const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-            if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
-              player.path = [];
-          }
+    const dir = heldDir();
+    if (dir) {
+      player.path = [];
+      player.pendingAction = null;
+      player.attackTarget = null;
+      tryMove(state, hud, dir, walkableFn);
+    } else if (player.attackTarget && player.attackTarget.hp > 0) {
+      const t = player.attackTarget;
+      if (isAdjacent(player.tileX, player.tileY, t.tileX, t.tileY)) {
+        player.dir = dirBetween(player.tileX, player.tileY, t.tileX, t.tileY);
+        attemptPlayerAttack(state, hud, now);
+      } else {
+        if (player.path.length === 0) {
+          const p = bfsToAdjacent(
+            player.tileX,
+            player.tileY,
+            t.tileX,
+            t.tileY,
+            walkableFn,
+          );
+          if (p.length) player.path = p;
+          else player.attackTarget = null;
         }
-      } else if (player.path.length) {
-        const next = player.path.shift()!;
-        const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-        if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
-          player.path = [];
+        if (player.path.length) {
+          const next = player.path.shift()!;
+          const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
+          if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
+            player.path = [];
+        }
       }
+    } else if (player.path.length) {
+      const next = player.path.shift()!;
+      const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
+      if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
+        player.path = [];
     }
 
     updateSeeds(state, now);
     updateSmelters(state, now);
     for (const enemy of state.enemies)
       updateEnemy(state, hud, enemy, now, walkableFn);
+  }
+
+  function frame(now: number): void {
+    if (lastFrameTime === null) lastFrameTime = now;
+    // clamp so a backgrounded/throttled tab doesn't burst-process a big
+    // catch-up of ticks the moment it regains focus
+    tickAccumulator += Math.min(now - lastFrameTime, TICK_MS * 5);
+    lastFrameTime = now;
+    while (tickAccumulator >= TICK_MS) {
+      tickAccumulator -= TICK_MS;
+      simulateTick(now);
+    }
+
+    const { player } = state;
+    if (player.moving) {
+      updateActorAnimation(player, now);
+      if (!player.moving) onPlayerArrived(state, hud);
+    }
+    for (const enemy of state.enemies)
+      if (enemy.moving) updateActorAnimation(enemy, now);
 
     render(state, now);
     if (state.mapOpen) renderWorldMap(state);
-    requestAnimationFrame(tick);
+    requestAnimationFrame(frame);
   }
 
   updateHud(state, hud);
-  requestAnimationFrame(tick);
+  requestAnimationFrame(frame);
 }
