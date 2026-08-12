@@ -1,9 +1,9 @@
 // Enemy AI: wander until the player is sighted, then chase and attack.
 import type { Enemy, GameState, HudRefs, Player } from '../types/types';
 import {
-  DUMMY_ATK_COOLDOWN,
+  DUMMY_ATK_COOLDOWN_TICKS,
   ENEMY_AGGRO_RADIUS,
-  ENEMY_ATK_COOLDOWN,
+  ENEMY_ATK_COOLDOWN_TICKS,
   ENEMY_ATK_DAMAGE,
   ENEMY_LOSE_AGGRO_MS,
   ENEMY_REPATH_MS,
@@ -13,11 +13,7 @@ import {
   HIT_FLASH_MS,
 } from '../constants';
 import { isSolid } from '../state/state';
-import {
-  dirBetween,
-  startStep,
-  updateActorAnimation,
-} from '../entities/entities';
+import { dirBetween, startStep } from '../entities/entities';
 import {
   bfsToAdjacent,
   findPath,
@@ -53,9 +49,13 @@ function attemptEnemyAttack(
   enemy: Enemy,
   now: number,
 ): void {
-  const cooldown = enemy.stationary ? DUMMY_ATK_COOLDOWN : ENEMY_ATK_COOLDOWN;
-  if (now - enemy.lastAttack < cooldown) return;
-  enemy.lastAttack = now;
+  const cooldownTicks = enemy.stationary
+    ? DUMMY_ATK_COOLDOWN_TICKS
+    : ENEMY_ATK_COOLDOWN_TICKS;
+  // gated against state.tick, not `now` — see PLAYER_ATK_COOLDOWN_TICKS's
+  // comment in constants.ts
+  if (state.tick < enemy.nextAttackAt) return;
+  enemy.nextAttackAt = state.tick + cooldownTicks;
   enemy.flashUntil = now + HIT_FLASH_MS;
   damagePlayer(state, hud, ENEMY_ATK_DAMAGE, now, enemy);
 }
@@ -69,10 +69,14 @@ export function updateEnemy(
   walkable: Walkable,
 ): void {
   if (enemy.hp <= 0) return;
-  if (enemy.moving) {
-    updateActorAnimation(enemy, now);
-    return;
-  }
+  // animation is advanced centrally, once per rendered frame, from game.ts's
+  // frame() — this function only makes decisions, once per simulation tick.
+  // It runs unconditionally even if a previous step is still visually
+  // animating: tileX/tileY already update instantly at step-start (see
+  // entities.ts's startStep), so each tick is free to act regardless of
+  // `moving`, which only gates the cosmetic tween. This matters when a
+  // frame hitch lets more than one tick drain at once — gating on `moving`
+  // here would silently waste every tick after the first in that drain.
 
   // the training dummy never wanders or chases — it just stands there and
   // retaliates if the player is standing next to it

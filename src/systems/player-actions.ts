@@ -3,12 +3,12 @@
 // held) lives in input/player-input.ts.
 import type { Dir, GameState, HudRefs, ItemType, Point } from '../types/types';
 import {
-  BASE_MOVE_DUR,
   carryColor,
   ENERGY_HEAL_AMOUNT,
-  ENERGY_SEED_GROW_MS,
-  PLAYER_ATK_COOLDOWN,
+  ENERGY_SEED_GROW_TICKS,
+  PLAYER_ATK_COOLDOWN_TICKS,
   PLAYER_ATK_DAMAGE,
+  TICK_MS,
   TILE_DEFS,
   WEAPON_DEFS,
 } from '../constants';
@@ -47,7 +47,7 @@ export function tryPlayerStep(
 ): boolean {
   const { player } = state;
   if (!walkable(nx, ny)) return false;
-  player.moveDur = BASE_MOVE_DUR;
+  player.moveDur = TICK_MS;
   startStep(player, nx, ny, dir);
   spendMoveHp(state, hud);
   return true;
@@ -123,7 +123,7 @@ export function doPickup(
     // the same seed keeps producing as long as it's kept picked
     const producingSeed = state.seeds.get(key);
     if (producingSeed)
-      producingSeed.readyAt = performance.now() + ENERGY_SEED_GROW_MS;
+      producingSeed.readyAt = state.tick + ENERGY_SEED_GROW_TICKS;
     spawnFloatingText(
       state,
       player,
@@ -194,7 +194,7 @@ export function doPlace(
   if (!(held in TILE_DEFS) && openForGroundItem(state, x, y)) {
     const item = held as ItemType;
     if (state.tiles.get(x + ',' + y) === 'furnace') {
-      const outcome = dumpInFurnace(state, x, y, item, performance.now());
+      const outcome = dumpInFurnace(state, x, y, item);
       const text =
         outcome === 'smelting'
           ? 'smelting ' + item
@@ -209,7 +209,7 @@ export function doPlace(
       );
     } else {
       if (item === 'energySeed') {
-        plantSeed(state, x, y, performance.now());
+        plantSeed(state, x, y);
       } else {
         state.groundItems.set(x + ',' + y, { x, y, type: item });
       }
@@ -244,9 +244,12 @@ export function doPlace(
   updateHud(state, hud);
 }
 
+// Sets pendingAction unconditionally, even when already adjacent — the
+// player-actions.ts one-tile-per-decision convention (see attemptPlayerAttack,
+// tryPlayerStep) means the actual pickup only resolves once game.ts's
+// simulateTick sees the pendingAction on a tick, not synchronously here.
 export function trySelectPickup(
   state: GameState,
-  hud: HudRefs,
   x: number,
   y: number,
   walkable: (x: number, y: number) => boolean,
@@ -254,7 +257,7 @@ export function trySelectPickup(
   const { player } = state;
   player.attackTarget = null;
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
-    doPickup(state, hud, x, y);
+    player.pendingAction = { type: 'pickup', x, y };
     return;
   }
   const path = bfsToAdjacent(player.tileX, player.tileY, x, y, walkable);
@@ -264,9 +267,9 @@ export function trySelectPickup(
   }
 }
 
+// same deferred-resolution note as trySelectPickup above
 export function tryPlaceAt(
   state: GameState,
-  hud: HudRefs,
   x: number,
   y: number,
   walkable: (x: number, y: number) => boolean,
@@ -281,7 +284,7 @@ export function tryPlaceAt(
   }
   player.attackTarget = null;
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
-    doPlace(state, hud, x, y);
+    player.pendingAction = { type: 'place', x, y };
     return;
   }
   const path = bfsToAdjacent(player.tileX, player.tileY, x, y, walkable);
@@ -310,24 +313,11 @@ export function attemptPlayerAttack(
   // unarmed damage/cooldown; anything else held (or nothing) attacks unarmed
   const weapon = player.held ? WEAPON_DEFS[player.held as ItemType] : undefined;
   const damage = weapon?.damage ?? PLAYER_ATK_DAMAGE;
-  const cooldown = weapon?.cooldown ?? PLAYER_ATK_COOLDOWN;
-  if (now - player.lastAttack < cooldown) return;
-  player.lastAttack = now;
+  const cooldownTicks = weapon?.cooldownTicks ?? PLAYER_ATK_COOLDOWN_TICKS;
+  // gated against state.tick, not `now`, so cadence is exact regardless of
+  // frame timing — see PLAYER_ATK_COOLDOWN_TICKS's comment in constants.ts
+  if (state.tick < player.nextAttackAt) return;
+  player.nextAttackAt = state.tick + cooldownTicks;
   damageEnemy(state, hud, t, damage, now);
   spendAttackHp(state, hud);
-}
-
-export function onPlayerArrived(state: GameState, hud: HudRefs): void {
-  const { player } = state;
-  if (!player.pendingAction) return;
-  const pa = player.pendingAction;
-  if (isAdjacent(player.tileX, player.tileY, pa.x, pa.y)) {
-    if (pa.type === 'pickup') doPickup(state, hud, pa.x, pa.y);
-    else doPlace(state, hud, pa.x, pa.y);
-    player.pendingAction = null;
-  } else if (player.path.length === 0) {
-    // path exhausted without ever reaching adjacency — give up quietly
-    player.pendingAction = null;
-  }
-  // otherwise: still mid-walk toward the target, keep pendingAction for the next step
 }

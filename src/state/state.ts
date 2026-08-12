@@ -21,6 +21,7 @@ import {
   PLAYER_MAX_HP,
   SPAWN_X,
   SPAWN_Y,
+  TICK_MS,
   TILE,
   TILE_DEFS,
 } from '../constants';
@@ -327,6 +328,7 @@ export function createGameState(
 
   const state: GameState = {
     refs,
+    tick: 0,
     seed,
     rng,
     map,
@@ -344,7 +346,7 @@ export function createGameState(
       dir: 'down',
       moving: false,
       moveStart: 0,
-      moveDur: 240,
+      moveDur: TICK_MS,
       fromX: 0,
       fromY: 0,
       toX: 0,
@@ -352,9 +354,10 @@ export function createGameState(
       path: [],
       held: null,
       pendingAction: null,
+      pendingUse: false,
       attacked: false,
       attackTarget: null,
-      lastAttack: 0,
+      nextAttackAt: 0,
       hp: PLAYER_MAX_HP,
       maxHp: PLAYER_MAX_HP,
       flashUntil: 0,

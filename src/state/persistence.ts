@@ -23,7 +23,6 @@ import type {
   TileType,
 } from '../types/types';
 import {
-  BASE_MOVE_DUR,
   DUMMY_SPAWN_DX,
   DUMMY_SPAWN_DY,
   MAP_H,
@@ -31,6 +30,7 @@ import {
   PLAYER_MAX_HP,
   SPAWN_X,
   SPAWN_Y,
+  TICK_MS,
 } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { buildGroundAtlas } from '../render/ground-atlas';
@@ -166,6 +166,11 @@ interface SavedPlayer {
 
 interface SaveData {
   seed: number;
+  // saved and restored verbatim (unlike the old wall-clock timers this
+  // replaced) so seeds/smelters readyAt — measured in ticks — stays valid
+  // across a reload instead of desyncing against a fresh performance.now()
+  // epoch
+  tick: number;
   tilesGrid: string;
   groundItems: number[];
   seeds: [string, PlantedSeed][];
@@ -178,6 +183,7 @@ interface SaveData {
 export function saveGame(state: GameState): void {
   const data: SaveData = {
     seed: state.seed,
+    tick: state.tick,
     tilesGrid: encodeTilesGrid(state.tiles),
     groundItems: encodeGroundItems(state.groundItems),
     seeds: Array.from(state.seeds.entries()),
@@ -247,7 +253,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     dir: sp.dir,
     moving: false,
     moveStart: 0,
-    moveDur: BASE_MOVE_DUR,
+    moveDur: TICK_MS,
     fromX: sp.tileX,
     fromY: sp.tileY,
     toX: sp.tileX,
@@ -255,9 +261,10 @@ export function loadGame(refs: GameRefs): GameState | null {
     path: [],
     held: sp.held,
     pendingAction: null,
+    pendingUse: false,
     attacked: false,
     attackTarget: null,
-    lastAttack: 0,
+    nextAttackAt: 0,
     hp: sp.hp,
     maxHp: sp.maxHp ?? PLAYER_MAX_HP,
     flashUntil: 0,
@@ -278,6 +285,8 @@ export function loadGame(refs: GameRefs): GameState | null {
 
   const state: GameState = {
     refs,
+    // old saves predate the tick clock — default to 0, same as a fresh game
+    tick: data.tick ?? 0,
     seed: data.seed,
     rng: mulberry32(data.seed),
     map,

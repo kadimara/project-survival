@@ -27,7 +27,8 @@ export interface GroundItem extends Point {
 
 // a seed planted on soil, tracked separately from state.groundItems so an
 // energySeed and the energy it periodically spawns can occupy the same
-// cell at once (see systems/farming.ts)
+// cell at once (see systems/farming.ts). readyAt is a tick count
+// (state.tick), not a millisecond timestamp.
 export interface PlantedSeed extends Point {
   readyAt: number;
 }
@@ -37,6 +38,7 @@ export interface PlantedSeed extends Point {
 // systems/smelting.ts. The player can pick the original `item` back up any
 // time before readyAt; once it passes, the job resolves (smelts, survives,
 // or is destroyed) and the entry is removed either way — no re-arming.
+// readyAt is a tick count (state.tick), not a millisecond timestamp.
 export interface Smelter extends Point {
   item: ItemType;
   readyAt: number;
@@ -71,9 +73,20 @@ export type PendingAction =
 export interface Player extends Actor {
   held: CarryType | null;
   pendingAction: PendingAction | null;
+  // set by the "Use item" button; resolved on the next simulation tick
+  // (see game.ts's simulateTick) rather than instantly on click, same
+  // deferred-resolution convention as pendingAction above. Kept separate
+  // from pendingAction/attackTarget rather than folded into the same
+  // movement/attack priority chain, since using an item (e.g. healing)
+  // needs to work even while chasing or mid-attack, not get starved by them.
+  pendingUse: boolean;
   attacked: boolean;
   attackTarget: Enemy | null;
-  lastAttack: number;
+  // tick count (state.tick) at which the next attack becomes allowed, same
+  // readyAt-style pattern as Seed/SmeltJob above — gated against state.tick
+  // rather than a ms timestamp so attack cadence stays exact regardless of
+  // frame timing (see attemptPlayerAttack in systems/player-actions.ts)
+  nextAttackAt: number;
   hp: number;
   maxHp: number;
   flashUntil: number;
@@ -86,7 +99,8 @@ export interface Enemy extends Actor {
   target: Player | null;
   nextWanderAt: number;
   nextRepathAt: number;
-  lastAttack: number;
+  // tick count (state.tick), same as Player.nextAttackAt above
+  nextAttackAt: number;
   aggroUntil: number;
   flashUntil: number;
   // true for the fixed training dummy near spawn: never wanders/chases and
@@ -133,6 +147,11 @@ export interface HudRefs {
 
 export interface GameState {
   refs: GameRefs;
+
+  // count of simulation ticks elapsed (see game.ts's simulateTick) — the
+  // clock that seeds/smelters readyAt (and nothing else) is measured
+  // against, instead of a wall-clock timestamp
+  tick: number;
 
   seed: number;
   rng: Rng;

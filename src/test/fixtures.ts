@@ -13,6 +13,7 @@ import {
   PLAYER_MAX_HP,
   SPAWN_X,
   SPAWN_Y,
+  TICK_MS,
   TILE,
 } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
@@ -66,7 +67,7 @@ export function createTestPlayer(overrides?: Partial<Player>): Player {
     dir: 'down',
     moving: false,
     moveStart: 0,
-    moveDur: 240,
+    moveDur: TICK_MS,
     fromX: 0,
     fromY: 0,
     toX: 0,
@@ -74,9 +75,10 @@ export function createTestPlayer(overrides?: Partial<Player>): Player {
     path: [],
     held: null,
     pendingAction: null,
+    pendingUse: false,
     attacked: false,
     attackTarget: null,
-    lastAttack: 0,
+    nextAttackAt: 0,
     hp: PLAYER_MAX_HP,
     maxHp: PLAYER_MAX_HP,
     flashUntil: 0,
@@ -96,6 +98,7 @@ export function createTestGameState(overrides?: Partial<GameState>): GameState {
   const seed = 1;
   return {
     refs: createTestRefs(),
+    tick: 0,
     seed,
     rng: mulberry32(seed),
     map: buildMap(MAP_W, MAP_H),

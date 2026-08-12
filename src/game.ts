@@ -6,6 +6,7 @@ import {
   DEFAULT_ZOOM_INDEX,
   MAP_H,
   MAP_W,
+  TICK_MS,
   TILE,
   WORLD_TILE,
 } from './constants';
@@ -26,8 +27,9 @@ import { bfsToAdjacent, isAdjacent } from './systems/pathfinding';
 import {
   attemptPlayerAttack,
   computeClickPath,
+  doPickup,
+  doPlace,
   handlePlayerAttacked,
-  onPlayerArrived,
   tryMove,
   tryPlaceAt,
   tryPlayerStep,
@@ -38,6 +40,7 @@ import { heldDir, setupPlayerInput } from './input/player-input';
 import { updateEnemy } from './systems/ai';
 import { updateSeeds } from './systems/farming';
 import { updateSmelters } from './systems/smelting';
+import { createTickClock, drainTicks } from './systems/ticker';
 import {
   createHudRefs,
   enableDragPan,
@@ -127,7 +130,9 @@ export function initColonyGame(): void {
   setupPlayerInput(state);
 
   // ---- use held item ----
-  hud.useItemBtn.addEventListener('click', () => useHeldItem(state, hud));
+  hud.useItemBtn.addEventListener('click', () => {
+    state.player.pendingUse = true;
+  });
 
   // ---- hover + click on the main canvas ----
   canvas.addEventListener('mousemove', (e) => {
@@ -159,11 +164,11 @@ export function initColonyGame(): void {
     // interacting with what's there
     if (!e.ctrlKey) {
       if (player.held) {
-        tryPlaceAt(state, hud, x, y, walkableFn);
+        tryPlaceAt(state, x, y, walkableFn);
         return;
       }
       if (occupantAt(state, x, y)) {
-        trySelectPickup(state, hud, x, y, walkableFn);
+        trySelectPickup(state, x, y, walkableFn);
         return;
       }
     }
@@ -215,61 +220,111 @@ export function initColonyGame(): void {
   });
 
   // ---- main loop ----
-  function tick(now: number): void {
+  // Simulation (movement/attack/AI decisions) resolves on a fixed tick,
+  // OSRS-style; rendering still runs every animation frame and interpolates
+  // smoothly between tick states via updateActorAnimation. How many ticks
+  // are due each frame is worked out by systems/ticker.ts's drainTicks — a
+  // pure function kept separate from this DOM-wired loop specifically so
+  // the pacing algorithm itself has unit test coverage (see ticker.test.ts).
+  const clock = createTickClock();
+
+  // Runs one tick's worth of decisions unconditionally — tileX/tileY update
+  // instantly at step-start (see entities.ts's startStep), so a tick is free
+  // to act even if the previous tick's step is still visually animating;
+  // `moving` only gates the cosmetic tween in frame() below. This matters
+  // when a frame hitch lets the accumulator drain more than one tick at
+  // once: gating on `moving` here would silently waste every tick after the
+  // first in that drain, since the animation flag has no chance to reset
+  // mid-drain (it's only updated once per frame, after the loop).
+  function simulateTick(now: number): void {
+    state.tick++;
     const { player } = state;
     handlePlayerAttacked(state);
-    if (player.moving) {
-      updateActorAnimation(player, now);
-      if (!player.moving) onPlayerArrived(state, hud);
-    } else {
-      const dir = heldDir();
-      if (dir) {
-        player.path = [];
-        player.pendingAction = null;
-        player.attackTarget = null;
-        tryMove(state, hud, dir, walkableFn);
-      } else if (player.attackTarget && player.attackTarget.hp > 0) {
-        const t = player.attackTarget;
-        if (isAdjacent(player.tileX, player.tileY, t.tileX, t.tileY)) {
-          player.dir = dirBetween(player.tileX, player.tileY, t.tileX, t.tileY);
-          attemptPlayerAttack(state, hud, now);
-        } else {
-          if (player.path.length === 0) {
-            const p = bfsToAdjacent(
-              player.tileX,
-              player.tileY,
-              t.tileX,
-              t.tileY,
-              walkableFn,
-            );
-            if (p.length) player.path = p;
-            else player.attackTarget = null;
-          }
-          if (player.path.length) {
-            const next = player.path.shift()!;
-            const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-            if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
-              player.path = [];
-          }
+    // resolved unconditionally, every tick, independent of the
+    // movement/attack/pendingAction chain below — using an item (e.g.
+    // healing) must work even mid-chase or mid-attack, not get starved by
+    // them the way a pickup/place pendingAction would
+    if (player.pendingUse) {
+      useHeldItem(state, hud);
+      player.pendingUse = false;
+    }
+    const dir = heldDir();
+    if (dir) {
+      player.path = [];
+      player.pendingAction = null;
+      player.attackTarget = null;
+      tryMove(state, hud, dir, walkableFn);
+    } else if (player.attackTarget && player.attackTarget.hp > 0) {
+      const t = player.attackTarget;
+      if (isAdjacent(player.tileX, player.tileY, t.tileX, t.tileY)) {
+        player.dir = dirBetween(player.tileX, player.tileY, t.tileX, t.tileY);
+        attemptPlayerAttack(state, hud, now);
+      } else {
+        if (player.path.length === 0) {
+          const p = bfsToAdjacent(
+            player.tileX,
+            player.tileY,
+            t.tileX,
+            t.tileY,
+            walkableFn,
+          );
+          if (p.length) player.path = p;
+          else player.attackTarget = null;
         }
+        if (player.path.length) {
+          const next = player.path.shift()!;
+          const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
+          if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
+            player.path = [];
+        }
+      }
+    } else if (player.pendingAction) {
+      // click-to-pickup/place: same shape as the attack-chase branch above —
+      // adjacent already means resolve now, otherwise take one step toward
+      // it and let a later tick re-check adjacency. The path itself was
+      // already computed once, at click time (see trySelectPickup/
+      // tryPlaceAt), since the target tile doesn't move.
+      const pa = player.pendingAction;
+      if (isAdjacent(player.tileX, player.tileY, pa.x, pa.y)) {
+        if (pa.type === 'pickup') doPickup(state, hud, pa.x, pa.y);
+        else doPlace(state, hud, pa.x, pa.y);
+        player.pendingAction = null;
       } else if (player.path.length) {
         const next = player.path.shift()!;
         const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
         if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
           player.path = [];
+      } else {
+        // path exhausted without ever reaching adjacency — give up quietly
+        player.pendingAction = null;
       }
+    } else if (player.path.length) {
+      const next = player.path.shift()!;
+      const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
+      if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
+        player.path = [];
     }
 
-    updateSeeds(state, now);
-    updateSmelters(state, now);
+    updateSeeds(state);
+    updateSmelters(state);
     for (const enemy of state.enemies)
       updateEnemy(state, hud, enemy, now, walkableFn);
+  }
+
+  function frame(now: number): void {
+    const ticksDue = drainTicks(clock, now, TICK_MS);
+    for (let i = 0; i < ticksDue; i++) simulateTick(now);
+
+    const { player } = state;
+    if (player.moving) updateActorAnimation(player, now);
+    for (const enemy of state.enemies)
+      if (enemy.moving) updateActorAnimation(enemy, now);
 
     render(state, now);
     if (state.mapOpen) renderWorldMap(state);
-    requestAnimationFrame(tick);
+    requestAnimationFrame(frame);
   }
 
   updateHud(state, hud);
-  requestAnimationFrame(tick);
+  requestAnimationFrame(frame);
 }

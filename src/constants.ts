@@ -7,7 +7,10 @@ export const SPAWN_X = Math.floor(MAP_W / 2);
 export const SPAWN_Y = Math.floor(MAP_H / 2);
 export const INITIAL_SEED = 393845991;
 
-export const BASE_MOVE_DUR = 240;
+// length of one simulation tick — OSRS-style: movement, attacks, and AI
+// decisions all resolve on this cadence instead of continuously (see
+// game.ts's frame/simulateTick split)
+export const TICK_MS = 250;
 
 // vpw × vph tiles visible at each zoom level — kept square (vpw === vph) so
 // the on-screen canvas is always a square that can be fit to the viewport
@@ -103,18 +106,21 @@ export const ITEM_DEFS: Record<
 };
 
 // ---- soil farming: an energySeed planted on soil spawns an energy item on
-// the same cell after ENERGY_SEED_GROW_MS (if the cell doesn't already have
-// one); harvesting that energy restarts the seed's timer, so a seed keeps
-// producing renewably as long as it's kept picked (systems/farming.ts) ----
-export const ENERGY_SEED_GROW_MS = 10000;
+// the same cell after ENERGY_SEED_GROW_TICKS (if the cell doesn't already
+// have one); harvesting that energy restarts the seed's timer, so a seed
+// keeps producing renewably as long as it's kept picked
+// (systems/farming.ts). Measured in ticks, like everything else that gates
+// on state.tick, rather than milliseconds — 40 ticks (~10s at the current
+// TICK_MS) ----
+export const ENERGY_SEED_GROW_TICKS = 40;
 
 // ---- furnace: ore placed on a furnace tile becomes an ingot after
-// ORE_SMELT_MS; any other item placed there melts away after ITEM_MELT_MS
-// unless it survives (see FURNACE_SURVIVORS in systems/smelting.ts). The
-// player can pick the original item back up any time before its timer
-// fires, canceling the job. ----
-export const ORE_SMELT_MS = 5000;
-export const ITEM_MELT_MS = 2000;
+// ORE_SMELT_TICKS; any other item placed there melts away after
+// ITEM_MELT_TICKS unless it survives (see FURNACE_SURVIVORS in
+// systems/smelting.ts). The player can pick the original item back up any
+// time before its timer fires, canceling the job. ----
+export const ORE_SMELT_TICKS = 20; // ~5s at the current TICK_MS
+export const ITEM_MELT_TICKS = 8; // ~2s at the current TICK_MS
 
 // looks up the primary color for anything the player can carry, whichever
 // def table (TILE_DEFS or ITEM_DEFS) it belongs to
@@ -135,17 +141,22 @@ export const PLAYER_MAX_HP = 100;
 // attemptEnemyAttack, and player-actions.ts's attemptPlayerAttack)
 export const HIT_FLASH_MS = 140;
 export const PLAYER_ATK_DAMAGE = 3;
-export const PLAYER_ATK_COOLDOWN = 650;
+// measured in whole ticks (state.tick), not ms — attack cooldowns are
+// gated against state.tick (see attemptPlayerAttack in
+// systems/player-actions.ts), not wall-clock time, so cadence stays exact
+// regardless of frame timing/hitches instead of drifting like a
+// performance.now() comparison would
+export const PLAYER_ATK_COOLDOWN_TICKS = 4;
 
 // a weapon is "equipped" simply by being held (see attemptPlayerAttack in
 // systems/player-actions.ts) — no separate equip slot, so wielding one
 // means your one carry slot isn't free for hauling ore/energy/etc. Only
-// item types listed here override the unarmed PLAYER_ATK_DAMAGE/COOLDOWN
+// item types listed here override the unarmed PLAYER_ATK_DAMAGE/COOLDOWN_TICKS
 // above; anything else held attacks unarmed.
 export const WEAPON_DEFS: Partial<
-  Record<ItemType, { damage: number; cooldown: number }>
+  Record<ItemType, { damage: number; cooldownTicks: number }>
 > = {
-  sword: { damage: 6, cooldown: 650 },
+  sword: { damage: 6, cooldownTicks: 4 },
 };
 // hp spent per tile the player steps onto, however the step was triggered
 // (keyboard, click-to-move, or auto-pathing toward an attack target)
@@ -160,15 +171,18 @@ export const ENERGY_HEAL_AMOUNT = 50;
 // ---- roaming enemies: wander until they see you, then chase and attack ----
 export const ENEMY_COUNT = 20;
 export const ENEMY_MAX_HP = 10;
-export const ENEMY_MOVE_DUR = 280;
 export const ENEMY_ATK_DAMAGE = 2;
-export const ENEMY_ATK_COOLDOWN = 900;
+// in ticks — see PLAYER_ATK_COOLDOWN_TICKS's comment on why this is
+// gated against state.tick rather than wall-clock time
+export const ENEMY_ATK_COOLDOWN_TICKS = 2;
 export const ENEMY_AGGRO_RADIUS = 5;
 export const ENEMY_LOSE_AGGRO_MS = 4000;
 export const ENEMY_WANDER_MIN_MS = 1200;
 export const ENEMY_WANDER_MAX_MS = 3000;
 export const ENEMY_WANDER_RADIUS = 4;
-export const ENEMY_REPATH_MS = 500;
+// 1 tick — throttles repathing only, so unlike the attack cooldowns above
+// it's fine to stay wall-clock/ms rather than gated on state.tick
+export const ENEMY_REPATH_MS = 250;
 export const ENEMY_SPAWN_MIN_DIST = 10; // keep initial spawns away from the player's start
 
 // ---- training dummy: fixed, immortal, immovable enemy near spawn (see
@@ -176,4 +190,7 @@ export const ENEMY_SPAWN_MIN_DIST = 10; // keep initial spawns away from the pla
 // but on a much slower cooldown, and never wanders/chases.
 export const DUMMY_SPAWN_DX = 0;
 export const DUMMY_SPAWN_DY = 2; // within buildStones' spawn-safety bubble, so always open ground
-export const DUMMY_ATK_COOLDOWN = 3000;
+// in ticks (12 ticks == 3000ms at the current TICK_MS) — see
+// PLAYER_ATK_COOLDOWN_TICKS's comment on why this is gated against
+// state.tick rather than wall-clock time
+export const DUMMY_ATK_COOLDOWN_TICKS = 12;
