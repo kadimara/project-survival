@@ -106,18 +106,21 @@ export const ITEM_DEFS: Record<
 };
 
 // ---- soil farming: an energySeed planted on soil spawns an energy item on
-// the same cell after ENERGY_SEED_GROW_MS (if the cell doesn't already have
-// one); harvesting that energy restarts the seed's timer, so a seed keeps
-// producing renewably as long as it's kept picked (systems/farming.ts) ----
-export const ENERGY_SEED_GROW_MS = 10000;
+// the same cell after ENERGY_SEED_GROW_TICKS (if the cell doesn't already
+// have one); harvesting that energy restarts the seed's timer, so a seed
+// keeps producing renewably as long as it's kept picked
+// (systems/farming.ts). Measured in ticks, like everything else that gates
+// on state.tick, rather than milliseconds — 40 ticks (~10s at the current
+// TICK_MS) ----
+export const ENERGY_SEED_GROW_TICKS = 40;
 
 // ---- furnace: ore placed on a furnace tile becomes an ingot after
-// ORE_SMELT_MS; any other item placed there melts away after ITEM_MELT_MS
-// unless it survives (see FURNACE_SURVIVORS in systems/smelting.ts). The
-// player can pick the original item back up any time before its timer
-// fires, canceling the job. ----
-export const ORE_SMELT_MS = 5000;
-export const ITEM_MELT_MS = 2000;
+// ORE_SMELT_TICKS; any other item placed there melts away after
+// ITEM_MELT_TICKS unless it survives (see FURNACE_SURVIVORS in
+// systems/smelting.ts). The player can pick the original item back up any
+// time before its timer fires, canceling the job. ----
+export const ORE_SMELT_TICKS = 20; // ~5s at the current TICK_MS
+export const ITEM_MELT_TICKS = 8; // ~2s at the current TICK_MS
 
 // looks up the primary color for anything the player can carry, whichever
 // def table (TILE_DEFS or ITEM_DEFS) it belongs to

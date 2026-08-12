@@ -328,6 +328,7 @@ export function createGameState(
 
   const state: GameState = {
     refs,
+    tick: 0,
     seed,
     rng,
     map,

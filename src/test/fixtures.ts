@@ -97,6 +97,7 @@ export function createTestGameState(overrides?: Partial<GameState>): GameState {
   const seed = 1;
   return {
     refs: createTestRefs(),
+    tick: 0,
     seed,
     rng: mulberry32(seed),
     map: buildMap(MAP_W, MAP_H),

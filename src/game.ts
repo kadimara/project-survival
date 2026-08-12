@@ -39,6 +39,7 @@ import { heldDir, setupPlayerInput } from './input/player-input';
 import { updateEnemy } from './systems/ai';
 import { updateSeeds } from './systems/farming';
 import { updateSmelters } from './systems/smelting';
+import { createTickClock, drainTicks } from './systems/ticker';
 import {
   createHudRefs,
   enableDragPan,
@@ -216,11 +217,13 @@ export function initColonyGame(): void {
   });
 
   // ---- main loop ----
-  // Simulation (movement/attack/AI decisions) resolves on a fixed 600ms
-  // tick, OSRS-style; rendering still runs every animation frame and
-  // interpolates smoothly between tick states via updateActorAnimation.
-  let tickAccumulator = 0;
-  let lastFrameTime: number | null = null;
+  // Simulation (movement/attack/AI decisions) resolves on a fixed tick,
+  // OSRS-style; rendering still runs every animation frame and interpolates
+  // smoothly between tick states via updateActorAnimation. How many ticks
+  // are due each frame is worked out by systems/ticker.ts's drainTicks — a
+  // pure function kept separate from this DOM-wired loop specifically so
+  // the pacing algorithm itself has unit test coverage (see ticker.test.ts).
+  const clock = createTickClock();
 
   // Runs one tick's worth of decisions unconditionally — tileX/tileY update
   // instantly at step-start (see entities.ts's startStep), so a tick is free
@@ -231,6 +234,7 @@ export function initColonyGame(): void {
   // first in that drain, since the animation flag has no chance to reset
   // mid-drain (it's only updated once per frame, after the loop).
   function simulateTick(now: number): void {
+    state.tick++;
     const { player } = state;
     handlePlayerAttacked(state);
     const dir = heldDir();
@@ -270,22 +274,15 @@ export function initColonyGame(): void {
         player.path = [];
     }
 
-    updateSeeds(state, now);
-    updateSmelters(state, now);
+    updateSeeds(state);
+    updateSmelters(state);
     for (const enemy of state.enemies)
       updateEnemy(state, hud, enemy, now, walkableFn);
   }
 
   function frame(now: number): void {
-    if (lastFrameTime === null) lastFrameTime = now;
-    // clamp so a backgrounded/throttled tab doesn't burst-process a big
-    // catch-up of ticks the moment it regains focus
-    tickAccumulator += Math.min(now - lastFrameTime, TICK_MS * 5);
-    lastFrameTime = now;
-    while (tickAccumulator >= TICK_MS) {
-      tickAccumulator -= TICK_MS;
-      simulateTick(now);
-    }
+    const ticksDue = drainTicks(clock, now, TICK_MS);
+    for (let i = 0; i < ticksDue; i++) simulateTick(now);
 
     const { player } = state;
     if (player.moving) {

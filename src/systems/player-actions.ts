@@ -5,7 +5,7 @@ import type { Dir, GameState, HudRefs, ItemType, Point } from '../types/types';
 import {
   carryColor,
   ENERGY_HEAL_AMOUNT,
-  ENERGY_SEED_GROW_MS,
+  ENERGY_SEED_GROW_TICKS,
   PLAYER_ATK_COOLDOWN,
   PLAYER_ATK_DAMAGE,
   TICK_MS,
@@ -123,7 +123,7 @@ export function doPickup(
     // the same seed keeps producing as long as it's kept picked
     const producingSeed = state.seeds.get(key);
     if (producingSeed)
-      producingSeed.readyAt = performance.now() + ENERGY_SEED_GROW_MS;
+      producingSeed.readyAt = state.tick + ENERGY_SEED_GROW_TICKS;
     spawnFloatingText(
       state,
       player,
@@ -194,7 +194,7 @@ export function doPlace(
   if (!(held in TILE_DEFS) && openForGroundItem(state, x, y)) {
     const item = held as ItemType;
     if (state.tiles.get(x + ',' + y) === 'furnace') {
-      const outcome = dumpInFurnace(state, x, y, item, performance.now());
+      const outcome = dumpInFurnace(state, x, y, item);
       const text =
         outcome === 'smelting'
           ? 'smelting ' + item
@@ -209,7 +209,7 @@ export function doPlace(
       );
     } else {
       if (item === 'energySeed') {
-        plantSeed(state, x, y, performance.now());
+        plantSeed(state, x, y);
       } else {
         state.groundItems.set(x + ',' + y, { x, y, type: item });
       }

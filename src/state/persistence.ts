@@ -166,6 +166,11 @@ interface SavedPlayer {
 
 interface SaveData {
   seed: number;
+  // saved and restored verbatim (unlike the old wall-clock timers this
+  // replaced) so seeds/smelters readyAt — measured in ticks — stays valid
+  // across a reload instead of desyncing against a fresh performance.now()
+  // epoch
+  tick: number;
   tilesGrid: string;
   groundItems: number[];
   seeds: [string, PlantedSeed][];
@@ -178,6 +183,7 @@ interface SaveData {
 export function saveGame(state: GameState): void {
   const data: SaveData = {
     seed: state.seed,
+    tick: state.tick,
     tilesGrid: encodeTilesGrid(state.tiles),
     groundItems: encodeGroundItems(state.groundItems),
     seeds: Array.from(state.seeds.entries()),
@@ -278,6 +284,8 @@ export function loadGame(refs: GameRefs): GameState | null {
 
   const state: GameState = {
     refs,
+    // old saves predate the tick clock — default to 0, same as a fresh game
+    tick: data.tick ?? 0,
     seed: data.seed,
     rng: mulberry32(data.seed),
     map,

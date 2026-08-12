@@ -27,7 +27,8 @@ export interface GroundItem extends Point {
 
 // a seed planted on soil, tracked separately from state.groundItems so an
 // energySeed and the energy it periodically spawns can occupy the same
-// cell at once (see systems/farming.ts)
+// cell at once (see systems/farming.ts). readyAt is a tick count
+// (state.tick), not a millisecond timestamp.
 export interface PlantedSeed extends Point {
   readyAt: number;
 }
@@ -37,6 +38,7 @@ export interface PlantedSeed extends Point {
 // systems/smelting.ts. The player can pick the original `item` back up any
 // time before readyAt; once it passes, the job resolves (smelts, survives,
 // or is destroyed) and the entry is removed either way — no re-arming.
+// readyAt is a tick count (state.tick), not a millisecond timestamp.
 export interface Smelter extends Point {
   item: ItemType;
   readyAt: number;
@@ -133,6 +135,11 @@ export interface HudRefs {
 
 export interface GameState {
   refs: GameRefs;
+
+  // count of simulation ticks elapsed (see game.ts's simulateTick) — the
+  // clock that seeds/smelters readyAt (and nothing else) is measured
+  // against, instead of a wall-clock timestamp
+  tick: number;
 
   seed: number;
   rng: Rng;

@@ -8,7 +8,7 @@
 // down) become an ingot, a survivor (currently just ingot) reappears
 // unchanged, and anything else melts away with nothing left.
 import type { GameState, ItemType } from '../types/types';
-import { ITEM_MELT_MS, ORE_SMELT_MS } from '../constants';
+import { ITEM_MELT_TICKS, ORE_SMELT_TICKS } from '../constants';
 
 export type FurnaceOutcome = 'smelting' | 'survived' | 'destroyed';
 
@@ -28,19 +28,23 @@ export function dumpInFurnace(
   x: number,
   y: number,
   item: ItemType,
-  now: number,
 ): FurnaceOutcome {
-  const ms = SMELTS_TO_INGOT.has(item) ? ORE_SMELT_MS : ITEM_MELT_MS;
-  state.smelters.set(x + ',' + y, { x, y, item, readyAt: now + ms });
+  const ticks = SMELTS_TO_INGOT.has(item) ? ORE_SMELT_TICKS : ITEM_MELT_TICKS;
+  state.smelters.set(x + ',' + y, {
+    x,
+    y,
+    item,
+    readyAt: state.tick + ticks,
+  });
   return outcomeFor(item);
 }
 
 // per-tick: any job past its timer resolves and is removed — a
 // SMELTS_TO_INGOT item becomes an ingot, a survivor reappears as itself,
 // anything else just vanishes.
-export function updateSmelters(state: GameState, now: number): void {
+export function updateSmelters(state: GameState): void {
   for (const [key, job] of state.smelters) {
-    if (now < job.readyAt) continue;
+    if (state.tick < job.readyAt) continue;
     const outcome = outcomeFor(job.item);
     if (outcome !== 'destroyed') {
       const type = SMELTS_TO_INGOT.has(job.item) ? 'ingot' : job.item;
