@@ -102,13 +102,12 @@ describe('attemptPlayerAttack', () => {
 describe('trySelectPickup', () => {
   it('clears an in-progress attackTarget when queueing a walk to a distant item', () => {
     const state = createTestGameState();
-    const hud = createTestHudRefs();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
     state.tiles.set('20,20', 'wood');
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
-    trySelectPickup(state, hud, 20, 20, walkableFn);
+    trySelectPickup(state, 20, 20, walkableFn);
 
     expect(state.player.attackTarget).toBeNull();
     expect(state.player.pendingAction).toEqual({
@@ -118,34 +117,59 @@ describe('trySelectPickup', () => {
     });
   });
 
-  it('clears an in-progress attackTarget on an immediate adjacent pickup', () => {
+  // resolution is deferred to a simulation tick (see game.ts's simulateTick)
+  // even when already adjacent, so nothing is picked up synchronously here
+  it('sets a pendingAction (not an immediate pickup) even when already adjacent', () => {
     const state = createTestGameState();
-    const hud = createTestHudRefs();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
     const { tileX, tileY } = state.player;
     state.tiles.set(tileX + 1 + ',' + tileY, 'wood');
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
-    trySelectPickup(state, hud, tileX + 1, tileY, walkableFn);
+    trySelectPickup(state, tileX + 1, tileY, walkableFn);
 
     expect(state.player.attackTarget).toBeNull();
-    expect(state.player.held).toBe('wood');
+    expect(state.player.pendingAction).toEqual({
+      type: 'pickup',
+      x: tileX + 1,
+      y: tileY,
+    });
+    expect(state.player.held).toBeNull();
   });
 });
 
 describe('tryPlaceAt', () => {
   it('clears an in-progress attackTarget when queueing a walk to place a held item', () => {
     const state = createTestGameState();
-    const hud = createTestHudRefs();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
     state.player.held = 'ore';
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
-    tryPlaceAt(state, hud, 20, 20, walkableFn);
+    tryPlaceAt(state, 20, 20, walkableFn);
 
     expect(state.player.attackTarget).toBeNull();
     expect(state.player.pendingAction).toEqual({ type: 'place', x: 20, y: 20 });
+  });
+
+  // same deferred-resolution note as trySelectPickup above
+  it('sets a pendingAction (not an immediate place) even when already adjacent', () => {
+    const state = createTestGameState();
+    const enemy = createTestEnemy(10, 10);
+    state.player.attackTarget = enemy;
+    state.player.held = 'ore';
+    const { tileX, tileY } = state.player;
+    const walkableFn = (x: number, y: number) => walkable(state, x, y);
+
+    tryPlaceAt(state, tileX + 1, tileY, walkableFn);
+
+    expect(state.player.attackTarget).toBeNull();
+    expect(state.player.pendingAction).toEqual({
+      type: 'place',
+      x: tileX + 1,
+      y: tileY,
+    });
+    expect(state.player.held).toBe('ore');
   });
 });

@@ -27,8 +27,9 @@ import { bfsToAdjacent, isAdjacent } from './systems/pathfinding';
 import {
   attemptPlayerAttack,
   computeClickPath,
+  doPickup,
+  doPlace,
   handlePlayerAttacked,
-  onPlayerArrived,
   tryMove,
   tryPlaceAt,
   tryPlayerStep,
@@ -161,11 +162,11 @@ export function initColonyGame(): void {
     // interacting with what's there
     if (!e.ctrlKey) {
       if (player.held) {
-        tryPlaceAt(state, hud, x, y, walkableFn);
+        tryPlaceAt(state, x, y, walkableFn);
         return;
       }
       if (occupantAt(state, x, y)) {
-        trySelectPickup(state, hud, x, y, walkableFn);
+        trySelectPickup(state, x, y, walkableFn);
         return;
       }
     }
@@ -267,6 +268,26 @@ export function initColonyGame(): void {
             player.path = [];
         }
       }
+    } else if (player.pendingAction) {
+      // click-to-pickup/place: same shape as the attack-chase branch above —
+      // adjacent already means resolve now, otherwise take one step toward
+      // it and let a later tick re-check adjacency. The path itself was
+      // already computed once, at click time (see trySelectPickup/
+      // tryPlaceAt), since the target tile doesn't move.
+      const pa = player.pendingAction;
+      if (isAdjacent(player.tileX, player.tileY, pa.x, pa.y)) {
+        if (pa.type === 'pickup') doPickup(state, hud, pa.x, pa.y);
+        else doPlace(state, hud, pa.x, pa.y);
+        player.pendingAction = null;
+      } else if (player.path.length) {
+        const next = player.path.shift()!;
+        const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
+        if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
+          player.path = [];
+      } else {
+        // path exhausted without ever reaching adjacency — give up quietly
+        player.pendingAction = null;
+      }
     } else if (player.path.length) {
       const next = player.path.shift()!;
       const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
@@ -285,10 +306,7 @@ export function initColonyGame(): void {
     for (let i = 0; i < ticksDue; i++) simulateTick(now);
 
     const { player } = state;
-    if (player.moving) {
-      updateActorAnimation(player, now);
-      if (!player.moving) onPlayerArrived(state, hud);
-    }
+    if (player.moving) updateActorAnimation(player, now);
     for (const enemy of state.enemies)
       if (enemy.moving) updateActorAnimation(enemy, now);
 

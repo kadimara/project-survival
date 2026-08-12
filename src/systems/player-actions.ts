@@ -244,9 +244,12 @@ export function doPlace(
   updateHud(state, hud);
 }
 
+// Sets pendingAction unconditionally, even when already adjacent — the
+// player-actions.ts one-tile-per-decision convention (see attemptPlayerAttack,
+// tryPlayerStep) means the actual pickup only resolves once game.ts's
+// simulateTick sees the pendingAction on a tick, not synchronously here.
 export function trySelectPickup(
   state: GameState,
-  hud: HudRefs,
   x: number,
   y: number,
   walkable: (x: number, y: number) => boolean,
@@ -254,7 +257,7 @@ export function trySelectPickup(
   const { player } = state;
   player.attackTarget = null;
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
-    doPickup(state, hud, x, y);
+    player.pendingAction = { type: 'pickup', x, y };
     return;
   }
   const path = bfsToAdjacent(player.tileX, player.tileY, x, y, walkable);
@@ -264,9 +267,9 @@ export function trySelectPickup(
   }
 }
 
+// same deferred-resolution note as trySelectPickup above
 export function tryPlaceAt(
   state: GameState,
-  hud: HudRefs,
   x: number,
   y: number,
   walkable: (x: number, y: number) => boolean,
@@ -281,7 +284,7 @@ export function tryPlaceAt(
   }
   player.attackTarget = null;
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
-    doPlace(state, hud, x, y);
+    player.pendingAction = { type: 'place', x, y };
     return;
   }
   const path = bfsToAdjacent(player.tileX, player.tileY, x, y, walkable);
@@ -315,19 +318,4 @@ export function attemptPlayerAttack(
   player.lastAttack = now;
   damageEnemy(state, hud, t, damage, now);
   spendAttackHp(state, hud);
-}
-
-export function onPlayerArrived(state: GameState, hud: HudRefs): void {
-  const { player } = state;
-  if (!player.pendingAction) return;
-  const pa = player.pendingAction;
-  if (isAdjacent(player.tileX, player.tileY, pa.x, pa.y)) {
-    if (pa.type === 'pickup') doPickup(state, hud, pa.x, pa.y);
-    else doPlace(state, hud, pa.x, pa.y);
-    player.pendingAction = null;
-  } else if (player.path.length === 0) {
-    // path exhausted without ever reaching adjacency — give up quietly
-    player.pendingAction = null;
-  }
-  // otherwise: still mid-walk toward the target, keep pendingAction for the next step
 }
