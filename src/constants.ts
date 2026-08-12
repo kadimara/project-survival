@@ -10,7 +10,7 @@ export const INITIAL_SEED = 393845991;
 // length of one simulation tick — OSRS-style: movement, attacks, and AI
 // decisions all resolve on this cadence instead of continuously (see
 // game.ts's frame/simulateTick split)
-export const TICK_MS = 500;
+export const TICK_MS = 250;
 
 // vpw × vph tiles visible at each zoom level — kept square (vpw === vph) so
 // the on-screen canvas is always a square that can be fit to the viewport
@@ -140,7 +140,7 @@ export const HIT_FLASH_MS = 140;
 export const PLAYER_ATK_DAMAGE = 3;
 // 1 tick — attack cooldowns are only re-checked once per simulation tick
 // (see game.ts's simulateTick), so this must be a whole multiple of TICK_MS
-export const PLAYER_ATK_COOLDOWN = 500;
+export const PLAYER_ATK_COOLDOWN = 250;
 
 // a weapon is "equipped" simply by being held (see attemptPlayerAttack in
 // systems/player-actions.ts) — no separate equip slot, so wielding one
@@ -150,7 +150,7 @@ export const PLAYER_ATK_COOLDOWN = 500;
 export const WEAPON_DEFS: Partial<
   Record<ItemType, { damage: number; cooldown: number }>
 > = {
-  sword: { damage: 6, cooldown: 500 }, // 1 tick
+  sword: { damage: 6, cooldown: 250 }, // 1 tick
 };
 // hp spent per tile the player steps onto, however the step was triggered
 // (keyboard, click-to-move, or auto-pathing toward an attack target)
@@ -167,14 +167,14 @@ export const ENEMY_COUNT = 20;
 export const ENEMY_MAX_HP = 10;
 export const ENEMY_ATK_DAMAGE = 2;
 // 2 ticks — see PLAYER_ATK_COOLDOWN's comment on tick-alignment
-export const ENEMY_ATK_COOLDOWN = 1000;
+export const ENEMY_ATK_COOLDOWN = 500;
 export const ENEMY_AGGRO_RADIUS = 5;
 export const ENEMY_LOSE_AGGRO_MS = 4000;
 export const ENEMY_WANDER_MIN_MS = 1200;
 export const ENEMY_WANDER_MAX_MS = 3000;
 export const ENEMY_WANDER_RADIUS = 4;
 // 1 tick — see PLAYER_ATK_COOLDOWN's comment on tick-alignment
-export const ENEMY_REPATH_MS = 500;
+export const ENEMY_REPATH_MS = 250;
 export const ENEMY_SPAWN_MIN_DIST = 10; // keep initial spawns away from the player's start
 
 // ---- training dummy: fixed, immortal, immovable enemy near spawn (see
