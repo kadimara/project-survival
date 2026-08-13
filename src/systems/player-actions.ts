@@ -10,6 +10,7 @@ import {
   PLAYER_ATK_DAMAGE,
   TICK_MS,
   TILE_DEFS,
+  weaponRange,
   WEAPON_DEFS,
 } from '../constants';
 import {
@@ -28,7 +29,12 @@ import {
   isAdjacent,
   type Walkable,
 } from './pathfinding';
-import { damageEnemy, spendAttackHp, spendMoveHp } from './combat';
+import {
+  damageEnemy,
+  fireProjectile,
+  spendAttackHp,
+  spendMoveHp,
+} from './combat';
 import { tryCombine } from './combine';
 import { plantSeed } from './farming';
 import { dumpInFurnace } from './smelting';
@@ -318,6 +324,15 @@ export function attemptPlayerAttack(
   // frame timing — see PLAYER_ATK_COOLDOWN_TICKS's comment in constants.ts
   if (state.tick < player.nextAttackAt) return;
   player.nextAttackAt = state.tick + cooldownTicks;
-  damageEnemy(state, hud, t, damage, now);
+  // a ranged weapon (WEAPON_DEFS' optional `range`, > 1) fires a
+  // delayed-hit projectile instead of applying damage instantly — see
+  // fireProjectile's comment in combat.ts. game.ts's attack-chase loop
+  // already confirmed the target is in range (and, for range > 1, in line
+  // of sight) before calling this, so no geometry check is needed here.
+  if (weaponRange(player.held) > 1) {
+    fireProjectile(state, player, t, damage, now);
+  } else {
+    damageEnemy(state, hud, t, damage, now);
+  }
   spendAttackHp(state, hud);
 }

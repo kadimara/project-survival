@@ -110,6 +110,7 @@ export function createTestGameState(overrides?: Partial<GameState>): GameState {
     enemies: [],
     player: createTestPlayer(),
     floatingTexts: [],
+    projectiles: [],
     zoomIndex: 0,
     VP_W: 0,
     VP_H: 0,

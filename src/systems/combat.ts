@@ -3,11 +3,13 @@
 // food, removing the corpse, resetting the game on player death). Kept
 // separate from player-actions.ts and ai.ts so neither has to import the
 // other.
-import type { Enemy, GameState, HudRefs } from '../types/types';
+import type { Enemy, GameState, HudRefs, Player } from '../types/types';
 import {
   HIT_FLASH_MS,
   PLAYER_ATK_HP_COST,
   PLAYER_MOVE_HP_COST,
+  PROJECTILE_TILES_PER_TICK,
+  TICK_MS,
   TILE,
 } from '../constants';
 import {
@@ -88,6 +90,57 @@ export function damageEnemy(
     enemy.hp = 0;
     if (state.player.attackTarget === enemy) state.player.attackTarget = null;
     killEnemy(state, hud, enemy);
+  }
+}
+
+// fires a ranged shot: damage is rolled now (see Projectile's comment in
+// types/types.ts for the OSRS-style "hit decided at cast time, hitsplat
+// delayed" convention this follows), but application — the damageEnemy call
+// below, via updateProjectiles — is deferred to landTick, `travelTicks`
+// after the current one, based on distance (see PROJECTILE_TILES_PER_TICK's
+// comment in constants.ts). Called from attemptPlayerAttack in
+// player-actions.ts once a ranged weapon's cooldown/range checks pass.
+export function fireProjectile(
+  state: GameState,
+  player: Player,
+  target: Enemy,
+  damage: number,
+  now: number,
+): void {
+  const dist = Math.hypot(
+    target.tileX - player.tileX,
+    target.tileY - player.tileY,
+  );
+  const travelTicks = Math.max(1, Math.ceil(dist / PROJECTILE_TILES_PER_TICK));
+  state.projectiles.push({
+    target,
+    damage,
+    fromPx: player.px + TILE / 2,
+    fromPy: player.py + TILE / 2,
+    toPx: target.px + TILE / 2,
+    toPy: target.py + TILE / 2,
+    spawnAt: now,
+    landAt: now + travelTicks * TICK_MS,
+    landTick: state.tick + travelTicks,
+  });
+}
+
+// resolves any in-flight projectile whose travel time has elapsed — called
+// once per tick from game.ts's simulateTick, alongside updateSeeds/
+// updateSmelters. A target that already died from something else before the
+// shot lands just fizzles quietly (no double-kill, no floating text)
+// instead of erroring.
+export function updateProjectiles(
+  state: GameState,
+  hud: HudRefs,
+  now: number,
+): void {
+  for (let i = state.projectiles.length - 1; i >= 0; i--) {
+    const p = state.projectiles[i];
+    if (state.tick < p.landTick) continue;
+    state.projectiles.splice(i, 1);
+    if (p.target.hp <= 0) continue;
+    damageEnemy(state, hud, p.target, p.damage, now);
   }
 }
 

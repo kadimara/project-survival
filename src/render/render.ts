@@ -17,9 +17,11 @@ import {
 import { getClampedCamX, getClampedCamY } from './camera';
 import { tileAt } from '../state/state';
 import {
+  drawBowIcon,
   drawFurnaceGlow,
   drawHpBar,
   drawItemIcon,
+  drawProjectile,
   drawScatteredDots,
   drawSquareEntity,
   drawSwordIcon,
@@ -141,6 +143,23 @@ export function render(state: GameState, now: number): void {
     drawItemIcon(ctx, TILE, sx, sy, item.type, ITEM_DEFS[item.type].colors);
   }
 
+  // in-flight ranged shots: lerp between fire-time and land-time positions
+  // by wall-clock progress, same interpolation idea as
+  // entities.ts's updateActorAnimation
+  for (const p of state.projectiles) {
+    const frac = Math.min(
+      1,
+      Math.max(0, (now - p.spawnAt) / (p.landAt - p.spawnAt)),
+    );
+    const wx = p.fromPx + (p.toPx - p.fromPx) * frac,
+      wy = p.fromPy + (p.toPy - p.fromPy) * frac;
+    const sx = wx - camX,
+      sy = wy - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    drawProjectile(ctx, sx, sy, ITEM_DEFS.bow.colors.primary);
+  }
+
   for (const enemy of state.enemies) {
     const sx = enemy.px - camX,
       sy = enemy.py - camY;
@@ -171,14 +190,15 @@ export function render(state: GameState, now: number): void {
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
     }
-    if (player.held === 'sword') {
+    if (player.held === 'sword' || player.held === 'bow') {
       const box = Math.round(TILE * 0.6);
-      drawSwordIcon(
+      const drawIcon = player.held === 'sword' ? drawSwordIcon : drawBowIcon;
+      drawIcon(
         ctx,
         box,
         sx + TILE / 2 - box / 2,
         sy - box,
-        ITEM_DEFS.sword.colors,
+        ITEM_DEFS[player.held].colors,
       );
     } else if (player.held) {
       ctx.fillStyle = carryColor(player.held);

@@ -8,10 +8,12 @@ import {
   MAP_W,
   TICK_MS,
   TILE,
+  weaponRange,
   WORLD_TILE,
 } from './constants';
 import {
   createGameState,
+  isSolid,
   occupantAt,
   regenerateWorld,
   walkable as stateWalkable,
@@ -23,7 +25,7 @@ import {
   updateActorAnimation,
 } from './entities/entities';
 import { applyZoom, fitCanvasDisplaySize, screenToTile } from './render/camera';
-import { bfsToAdjacent, isAdjacent } from './systems/pathfinding';
+import { bfsToAdjacent, inRange, isAdjacent } from './systems/pathfinding';
 import {
   attemptPlayerAttack,
   computeClickPath,
@@ -38,6 +40,7 @@ import {
 } from './systems/player-actions';
 import { heldDir, setupPlayerInput } from './input/player-input';
 import { updateEnemy } from './systems/ai';
+import { updateProjectiles } from './systems/combat';
 import { updateSeeds } from './systems/farming';
 import { updateSmelters } from './systems/smelting';
 import { createTickClock, drainTicks } from './systems/ticker';
@@ -256,7 +259,21 @@ export function initColonyGame(): void {
       tryMove(state, hud, dir, walkableFn);
     } else if (player.attackTarget && player.attackTarget.hp > 0) {
       const t = player.attackTarget;
-      if (isAdjacent(player.tileX, player.tileY, t.tileX, t.tileY)) {
+      // a ranged weapon (weaponRange > 1, see WEAPON_DEFS in constants.ts)
+      // can attack without closing to adjacency — inRange checks distance
+      // plus, beyond melee's exact range of 1, line of sight, so the player
+      // naturally stops advancing (see the bfsToAdjacent branch below) the
+      // moment a shot is possible instead of always walking all the way up
+      if (
+        inRange(
+          player.tileX,
+          player.tileY,
+          t.tileX,
+          t.tileY,
+          weaponRange(player.held),
+          (x, y) => isSolid(state, x, y),
+        )
+      ) {
         player.dir = dirBetween(player.tileX, player.tileY, t.tileX, t.tileY);
         attemptPlayerAttack(state, hud, now);
       } else {
@@ -307,6 +324,7 @@ export function initColonyGame(): void {
 
     updateSeeds(state);
     updateSmelters(state);
+    updateProjectiles(state, hud, now);
     for (const enemy of state.enemies)
       updateEnemy(state, hud, enemy, now, walkableFn);
   }

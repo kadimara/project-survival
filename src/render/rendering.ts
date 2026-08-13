@@ -174,6 +174,39 @@ export function drawSwordIcon(
   ctx.fillRect(cx - bladeW / 2, guardY + guardH, bladeW, handleH);
 }
 
+// a small bow shape — a curved limb (a handful of rects bulging away from a
+// taut string, tip to tip) built the same "handful of rects" blocky way as
+// drawSwordIcon above, and reused at the same two scales for the same
+// reason (see drawSwordIcon's comment)
+export function drawBowIcon(
+  ctx: CanvasRenderingContext2D,
+  box: number,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  const segments = 5;
+  const segH = box / segments;
+  // wide enough that consecutive segments always overlap horizontally
+  // despite their bulge offset changing, so the limb reads as one solid
+  // curve rather than a staircase with gaps
+  const limbW = Math.max(2, Math.round(box * 0.22));
+  const stringW = Math.max(1, Math.round(box * 0.1));
+  const stringX = sx + Math.round(box * 0.3);
+  // tip -> middle -> tip bulge offsets from the string, so the limb
+  // segments read as a curve rather than a straight stack
+  const bulge = [0, 0.14, 0.24, 0.14, 0];
+
+  ctx.fillStyle = colors.secondary;
+  ctx.fillRect(stringX - stringW, sy, stringW, box);
+
+  ctx.fillStyle = colors.primary;
+  for (let i = 0; i < segments; i++) {
+    const bx = stringX + Math.round(box * bulge[i]);
+    ctx.fillRect(bx, sy + Math.round(i * segH), limbW, Math.ceil(segH) + 1);
+  }
+}
+
 // draws whichever visual `type` uses as a loose item — shared by
 // state.groundItems and an in-progress furnace job (state.smelters) so a
 // job renders exactly like the item it started from, see render.ts
@@ -195,6 +228,10 @@ export function drawItemIcon(
   }
   if (type === 'sword') {
     drawSwordIcon(ctx, TILE, sx, sy, colors);
+    return;
+  }
+  if (type === 'bow') {
+    drawBowIcon(ctx, TILE, sx, sy, colors);
     return;
   }
   const size = Math.max(4, Math.round(TILE * 0.4));
@@ -220,6 +257,21 @@ export function drawSquareEntity(
   ctx.fillRect(sx + inset - 1, sy + inset - 1, size + 2, size + 2);
   ctx.fillStyle = fill;
   ctx.fillRect(sx + inset, sy + inset, size, size);
+}
+
+// in-flight ranged shot (see state.projectiles/render.ts) — a plain dot at
+// its current lerped position, matching the game's blocky, un-fussy art
+// style elsewhere rather than a fully rendered arrow sprite
+export function drawProjectile(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  color: string,
+): void {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 export function drawHpBar(

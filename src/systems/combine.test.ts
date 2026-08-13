@@ -12,6 +12,7 @@ const ALL_CARRY_TYPES: CarryType[] = [
   'ingot',
   'ore',
   'sword',
+  'bow',
 ];
 
 describe('tryCombine', () => {
@@ -21,6 +22,10 @@ describe('tryCombine', () => {
 
   it('resolves the ingot + ingot recipe to sword', () => {
     expect(tryCombine('ingot', 'ingot')).toBe('sword');
+  });
+
+  it('resolves the wood + ingot recipe to bow', () => {
+    expect(tryCombine('wood', 'ingot')).toBe('bow');
   });
 
   it('returns null for non-matching pairs', () => {
@@ -41,8 +46,8 @@ describe('tryCombine', () => {
     }
   });
 
-  // With only one recipe currently defined (stone+stone, which is
-  // symmetric), there's no pair in RECIPES that demonstrates held/target
-  // order actually mattering. When a non-symmetric recipe is added, add a
-  // test here asserting tryCombine(a, b) !== tryCombine(b, a) for it.
+  it('treats held/target order as significant for a non-symmetric recipe (wood + ingot)', () => {
+    expect(tryCombine('wood', 'ingot')).toBe('bow');
+    expect(tryCombine('ingot', 'wood')).toBeNull();
+  });
 });

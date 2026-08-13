@@ -103,6 +103,33 @@ describe('attemptPlayerAttack', () => {
 
     expect(state.player.hp).toBe(hpAfterFirstHit);
   });
+
+  it('fires a delayed-hit projectile instead of applying damage instantly when a ranged weapon is held', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.player.attackTarget = enemy;
+    state.player.held = 'bow';
+
+    attemptPlayerAttack(state, hud, 1000);
+
+    expect(enemy.hp).toBe(enemy.maxHp); // no instant damage
+    expect(state.projectiles).toHaveLength(1);
+    expect(state.projectiles[0].target).toBe(enemy);
+  });
+
+  it('still spends attack hp immediately on a ranged shot, same as melee', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.player.attackTarget = enemy;
+    state.player.held = 'bow';
+    const hpBefore = state.player.hp;
+
+    attemptPlayerAttack(state, hud, 1000);
+
+    expect(state.player.hp).toBe(hpBefore - PLAYER_ATK_HP_COST);
+  });
 });
 
 describe('trySelectPickup', () => {
