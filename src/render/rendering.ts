@@ -222,6 +222,21 @@ export function drawSquareEntity(
   ctx.fillRect(sx + inset, sy + inset, size, size);
 }
 
+// in-flight ranged shot (see state.projectiles/render.ts) — a plain dot at
+// its current lerped position, matching the game's blocky, un-fussy art
+// style elsewhere rather than a fully rendered arrow sprite
+export function drawProjectile(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  color: string,
+): void {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 export function drawHpBar(
   ctx: CanvasRenderingContext2D,
   TILE: number,

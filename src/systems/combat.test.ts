@@ -9,15 +9,19 @@ import {
   HIT_FLASH_MS,
   PLAYER_ATK_HP_COST,
   PLAYER_MOVE_HP_COST,
+  PROJECTILE_TILES_PER_TICK,
   SPAWN_X,
   SPAWN_Y,
+  TICK_MS,
 } from '../constants';
 import {
   damageEnemy,
   damagePlayer,
+  fireProjectile,
   killEnemy,
   spendAttackHp,
   spendMoveHp,
+  updateProjectiles,
 } from './combat';
 
 // combat.ts's death path (damagePlayer/spendMoveHp hitting 0 hp) calls
@@ -53,6 +57,7 @@ function assertWorldWasReset(state: ReturnType<typeof createTestGameState>) {
   expect(state.enemies.length).toBeLessThanOrEqual(ENEMY_COUNT + 1);
   expect(state.enemies.some((e) => e.stationary)).toBe(true);
   expect(state.groundItems.size).toBeGreaterThan(0);
+  expect(state.projectiles).toEqual([]);
 }
 
 describe('damagePlayer', () => {
@@ -341,5 +346,119 @@ describe('killEnemy', () => {
       y: 10,
       type: 'energy',
     });
+  });
+});
+
+describe('fireProjectile', () => {
+  it('pushes a projectile carrying the target and damage', () => {
+    const state = createTestGameState();
+    const enemy = createTestEnemy(SPAWN_X + 2, SPAWN_Y);
+    state.enemies.push(enemy);
+
+    fireProjectile(state, state.player, enemy, 5, 1000);
+
+    expect(state.projectiles).toHaveLength(1);
+    expect(state.projectiles[0].target).toBe(enemy);
+    expect(state.projectiles[0].damage).toBe(5);
+  });
+
+  it('lands after ceil(distance / PROJECTILE_TILES_PER_TICK) ticks', () => {
+    const state = createTestGameState();
+    // distance PROJECTILE_TILES_PER_TICK + 1 rounds up to 2 ticks, not 1
+    const enemy = createTestEnemy(
+      SPAWN_X + PROJECTILE_TILES_PER_TICK + 1,
+      SPAWN_Y,
+    );
+    state.enemies.push(enemy);
+
+    fireProjectile(state, state.player, enemy, 5, 1000);
+
+    const p = state.projectiles[0];
+    expect(p.landTick).toBe(state.tick + 2);
+    expect(p.landAt).toBe(1000 + 2 * TICK_MS);
+  });
+
+  it('takes a minimum of 1 tick to land, even at melee distance', () => {
+    const state = createTestGameState();
+    const enemy = createTestEnemy(SPAWN_X + 1, SPAWN_Y);
+    state.enemies.push(enemy);
+
+    fireProjectile(state, state.player, enemy, 5, 1000);
+
+    expect(state.projectiles[0].landTick).toBe(state.tick + 1);
+  });
+});
+
+describe('updateProjectiles', () => {
+  it('does not apply damage before landTick', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.enemies.push(enemy);
+    state.tick = 3;
+    state.projectiles.push({
+      target: enemy,
+      damage: 5,
+      fromPx: 0,
+      fromPy: 0,
+      toPx: 0,
+      toPy: 0,
+      spawnAt: 0,
+      landAt: 1000,
+      landTick: 5,
+    });
+
+    updateProjectiles(state, hud, 500);
+
+    expect(enemy.hp).toBe(enemy.maxHp);
+    expect(state.projectiles).toHaveLength(1);
+  });
+
+  it('applies damage and removes the projectile once landTick is reached', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.enemies.push(enemy);
+    state.tick = 5;
+    state.projectiles.push({
+      target: enemy,
+      damage: 5,
+      fromPx: 0,
+      fromPy: 0,
+      toPx: 0,
+      toPy: 0,
+      spawnAt: 0,
+      landAt: 1000,
+      landTick: 5,
+    });
+
+    updateProjectiles(state, hud, 1000);
+
+    expect(enemy.hp).toBe(enemy.maxHp - 5);
+    expect(state.projectiles).toEqual([]);
+  });
+
+  it('fizzles quietly when the target already died before the shot lands', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    enemy.hp = 0; // e.g. killed by a different hit while this shot was in flight
+    state.tick = 5;
+    state.projectiles.push({
+      target: enemy,
+      damage: 5,
+      fromPx: 0,
+      fromPy: 0,
+      toPx: 0,
+      toPy: 0,
+      spawnAt: 0,
+      landAt: 1000,
+      landTick: 5,
+    });
+
+    updateProjectiles(state, hud, 1000);
+
+    expect(state.floatingTexts).toEqual([]);
+    expect(state.projectiles).toEqual([]);
   });
 });

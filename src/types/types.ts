@@ -11,7 +11,8 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
 // constants.ts). Items are the ground layer: loose, drawn per-frame, sit on
 // top of terrain rather than being part of the grid (see ITEM_DEFS).
 export type TileType = 'stone' | 'soil' | 'furnace' | 'wood';
-export type ItemType = 'energy' | 'energySeed' | 'ingot' | 'ore' | 'sword';
+export type ItemType =
+  'energy' | 'energySeed' | 'ingot' | 'ore' | 'sword' | 'bow';
 export type CarryType = TileType | ItemType;
 
 export interface Point {
@@ -117,6 +118,26 @@ export interface FloatingText {
   born: number;
 }
 
+// an in-flight ranged shot. Damage is rolled and committed at fire time
+// (see fireProjectile in systems/combat.ts) — the same OSRS-style "hit
+// decided immediately, hitsplat delayed" convention — only the application
+// (the damageEnemy call and its flash/floating-text/death handling) and the
+// cosmetic travel animation are deferred until landTick. from/to px/py are
+// snapshotted once at fire time purely for the travel-line render (see
+// render.ts); they don't track the target's later movement, matching the
+// same "hit already decided" convention.
+export interface Projectile {
+  target: Enemy;
+  damage: number;
+  fromPx: number;
+  fromPy: number;
+  toPx: number;
+  toPy: number;
+  spawnAt: number; // ms (rAF/performance.now() timestamp) — for render lerp
+  landAt: number; // ms — for render lerp
+  landTick: number; // state.tick count at which damage applies
+}
+
 export interface GameRefs {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -167,6 +188,7 @@ export interface GameState {
   enemies: Enemy[];
   player: Player;
   floatingTexts: FloatingText[];
+  projectiles: Projectile[];
 
   zoomIndex: number;
   VP_W: number;

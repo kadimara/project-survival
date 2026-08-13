@@ -1,4 +1,4 @@
-import type { ItemType, TileType, ZoomLevel } from './types/types';
+import type { CarryType, ItemType, TileType, ZoomLevel } from './types/types';
 
 export const TILE = 16;
 export const MAP_W = 100;
@@ -103,6 +103,11 @@ export const ITEM_DEFS: Record<
   sword: {
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
+  // crafted from wood + ingot (see RECIPES in systems/combine.ts) — see
+  // WEAPON_DEFS below for its ranged attack stats
+  bow: {
+    colors: { primary: '#d9b25c', secondary: '#8a6a2f' },
+  },
 };
 
 // ---- soil farming: an energySeed planted on soil spawns an energy item on
@@ -152,12 +157,26 @@ export const PLAYER_ATK_COOLDOWN_TICKS = 4;
 // systems/player-actions.ts) — no separate equip slot, so wielding one
 // means your one carry slot isn't free for hauling ore/energy/etc. Only
 // item types listed here override the unarmed PLAYER_ATK_DAMAGE/COOLDOWN_TICKS
-// above; anything else held attacks unarmed.
+// above; anything else held attacks unarmed. `range` (optional, in tiles)
+// turns the weapon into a ranged attack: game.ts's attack-chase loop uses
+// weaponRange (below) + inRange (systems/pathfinding.ts) to attack from
+// distance instead of closing to adjacency, and attemptPlayerAttack
+// (systems/player-actions.ts) fires a delayed-hit projectile instead of
+// applying damage instantly. Weapons without `range` default to melee's
+// exact range of 1 (plain orthogonal adjacency, no line-of-sight check).
 export const WEAPON_DEFS: Partial<
-  Record<ItemType, { damage: number; cooldownTicks: number }>
+  Record<ItemType, { damage: number; cooldownTicks: number; range?: number }>
 > = {
   sword: { damage: 6, cooldownTicks: 4 },
+  bow: { damage: 4, cooldownTicks: 5, range: 6 },
 };
+
+// range (in tiles) the currently held item can attack from — see
+// WEAPON_DEFS' range field above.
+export function weaponRange(held: CarryType | null): number {
+  const weapon = held ? WEAPON_DEFS[held as ItemType] : undefined;
+  return weapon?.range ?? 1;
+}
 // hp spent per tile the player steps onto, however the step was triggered
 // (keyboard, click-to-move, or auto-pathing toward an attack target)
 export const PLAYER_MOVE_HP_COST = 1;
@@ -194,3 +213,12 @@ export const DUMMY_SPAWN_DY = 2; // within buildStones' spawn-safety bubble, so 
 // PLAYER_ATK_COOLDOWN_TICKS's comment on why this is gated against
 // state.tick rather than wall-clock time
 export const DUMMY_ATK_COOLDOWN_TICKS = 12;
+
+// ---- ranged weapon projectiles (see systems/combat.ts's fireProjectile/
+// updateProjectiles): a shot's hit/damage is decided at fire time, but
+// applied `travelTicks` later, based on distance. OSRS-style constant —
+// tiles of travel distance per simulation tick, e.g. a 3-tile shot takes 1
+// tick to land, a 6-tile shot takes 2. Purely a cosmetic delay before the
+// existing damageEnemy resolution runs; not a simulated physics object that
+// can be dodged or missed by the target moving out of the way. ----
+export const PROJECTILE_TILES_PER_TICK = 3;

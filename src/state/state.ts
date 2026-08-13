@@ -298,6 +298,7 @@ export function regenerateWorld(
   state.seeds.clear();
   state.smelters.clear();
   state.furnaces.clear();
+  state.projectiles.length = 0;
   seedWildItems(state, INITIAL_ENERGY_SEED_COUNT, 'energySeed');
   placeSpawnOre(state);
   spawnEnemies(state);
@@ -363,6 +364,7 @@ export function createGameState(
       flashUntil: 0,
     },
     floatingTexts: [],
+    projectiles: [],
     zoomIndex: 0,
     VP_W: 0,
     VP_H: 0,

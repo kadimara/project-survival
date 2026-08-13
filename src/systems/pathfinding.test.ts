@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { bfsToAdjacent, findPath, hasLineOfSight, isAdjacent } from './pathfinding';
+import {
+  bfsToAdjacent,
+  findPath,
+  hasLineOfSight,
+  inRange,
+  isAdjacent,
+} from './pathfinding';
 
 describe('isAdjacent', () => {
   it('is true for a horizontal neighbor', () => {
@@ -104,6 +110,43 @@ describe('bfsToAdjacent', () => {
     const walkable = makeWalkable([]);
     const path = bfsToAdjacent(5, 3, 5, 5, walkable);
     expect(path).toEqual([{ x: 5, y: 4 }]);
+  });
+});
+
+describe('inRange', () => {
+  it('is false for the same point, same as isAdjacent, regardless of range', () => {
+    expect(inRange(5, 5, 5, 5, 1, () => false)).toBe(false);
+    expect(inRange(5, 5, 5, 5, 6, () => false)).toBe(false);
+  });
+
+  it('matches isAdjacent for range 1 (true for an orthogonal neighbor)', () => {
+    expect(inRange(5, 5, 6, 5, 1, () => true)).toBe(true);
+  });
+
+  it('matches isAdjacent for range 1 (false for a diagonal neighbor)', () => {
+    expect(inRange(5, 5, 6, 6, 1, () => true)).toBe(false);
+  });
+
+  it('does not check line of sight for range 1, even through a solid callback', () => {
+    expect(inRange(5, 5, 6, 5, 1, () => false)).toBe(true);
+  });
+
+  it('is true for a target within a range greater than 1', () => {
+    expect(inRange(0, 0, 4, 0, 6, () => false)).toBe(true);
+  });
+
+  it('is false for a target beyond range', () => {
+    expect(inRange(0, 0, 10, 0, 6, () => false)).toBe(false);
+  });
+
+  it('is false when in range but line of sight is blocked (range > 1)', () => {
+    const isSolid = (x: number, y: number) => x === 2 && y === 0;
+    expect(inRange(0, 0, 4, 0, 6, isSolid)).toBe(false);
+  });
+
+  it('is true when in range and line of sight is clear (range > 1)', () => {
+    const isSolid = (x: number, y: number) => x === 2 && y === 5;
+    expect(inRange(0, 0, 4, 0, 6, isSolid)).toBe(true);
   });
 });
 

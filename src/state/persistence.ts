@@ -113,6 +113,7 @@ const ITEM_TO_ID: Record<ItemType, number> = {
   ore: 3,
   ingot: 4,
   sword: 5,
+  bow: 6,
 };
 const ID_TO_ITEM: (ItemType | undefined)[] = [
   undefined,
@@ -121,6 +122,7 @@ const ID_TO_ITEM: (ItemType | undefined)[] = [
   'ore',
   'ingot',
   'sword',
+  'bow',
 ];
 
 function encodeGroundItems(items: Map<string, GroundItem>): number[] {
@@ -298,6 +300,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     enemies,
     player,
     floatingTexts: [],
+    projectiles: [],
     zoomIndex: data.zoomIndex,
     VP_W: 0,
     VP_H: 0,

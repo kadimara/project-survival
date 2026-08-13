@@ -112,6 +112,26 @@ export function bfsToAdjacent(
   return path;
 }
 
+// true when (bx,by) is within `range` tiles of (ax,ay) — Euclidean
+// distance, same style as ai.ts's aggro-sighting radius check — and, for
+// any range beyond melee's exact 1 (plain orthogonal adjacency, where
+// nothing can block the hit), also requires a clear line of sight. Used by
+// game.ts's attack-chase loop, combined with WEAPON_DEFS' optional `range`
+// (see weaponRange in constants.ts), so a ranged weapon can attack without
+// closing to melee distance while a wall still blocks the shot.
+export function inRange(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  range: number,
+  isSolid: IsSolid,
+): boolean {
+  const d = Math.hypot(ax - bx, ay - by);
+  if (d <= 0 || d > range) return false;
+  return range <= 1 || hasLineOfSight(ax, ay, bx, by, isSolid);
+}
+
 // true if no solid tile lies strictly between (ax,ay) and (bx,by)
 export function hasLineOfSight(
   ax: number,

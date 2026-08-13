@@ -20,6 +20,7 @@ import {
   drawFurnaceGlow,
   drawHpBar,
   drawItemIcon,
+  drawProjectile,
   drawScatteredDots,
   drawSquareEntity,
   drawSwordIcon,
@@ -139,6 +140,23 @@ export function render(state: GameState, now: number): void {
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
     drawItemIcon(ctx, TILE, sx, sy, item.type, ITEM_DEFS[item.type].colors);
+  }
+
+  // in-flight ranged shots: lerp between fire-time and land-time positions
+  // by wall-clock progress, same interpolation idea as
+  // entities.ts's updateActorAnimation
+  for (const p of state.projectiles) {
+    const frac = Math.min(
+      1,
+      Math.max(0, (now - p.spawnAt) / (p.landAt - p.spawnAt)),
+    );
+    const wx = p.fromPx + (p.toPx - p.fromPx) * frac,
+      wy = p.fromPy + (p.toPy - p.fromPy) * frac;
+    const sx = wx - camX,
+      sy = wy - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    drawProjectile(ctx, sx, sy, ITEM_DEFS.bow.colors.primary);
   }
 
   for (const enemy of state.enemies) {

@@ -13,6 +13,9 @@ export interface CombineRecipe {
 export const RECIPES: CombineRecipe[] = [
   { held: 'stone', target: 'stone', result: 'furnace' },
   { held: 'ingot', target: 'ingot', result: 'sword' },
+  // shaft + arrowhead => bow (see WEAPON_DEFS in constants.ts for its
+  // ranged attack stats)
+  { held: 'wood', target: 'ingot', result: 'bow' },
 ];
 
 function recipeKey(held: CarryType, target: CarryType): string {
