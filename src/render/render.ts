@@ -17,6 +17,7 @@ import {
 import { getClampedCamX, getClampedCamY } from './camera';
 import { tileAt } from '../state/state';
 import {
+  drawBowIcon,
   drawFurnaceGlow,
   drawHpBar,
   drawItemIcon,
@@ -189,14 +190,15 @@ export function render(state: GameState, now: number): void {
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
     }
-    if (player.held === 'sword') {
+    if (player.held === 'sword' || player.held === 'bow') {
       const box = Math.round(TILE * 0.6);
-      drawSwordIcon(
+      const drawIcon = player.held === 'sword' ? drawSwordIcon : drawBowIcon;
+      drawIcon(
         ctx,
         box,
         sx + TILE / 2 - box / 2,
         sy - box,
-        ITEM_DEFS.sword.colors,
+        ITEM_DEFS[player.held].colors,
       );
     } else if (player.held) {
       ctx.fillStyle = carryColor(player.held);
