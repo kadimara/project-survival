@@ -104,9 +104,11 @@ export const ITEM_DEFS: Record<
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
   // crafted from wood + ingot (see RECIPES in systems/combine.ts) — see
-  // WEAPON_DEFS below for its ranged attack stats
+  // WEAPON_DEFS below for its ranged attack stats. Shares wood's colors
+  // (see TILE_DEFS.wood above) rather than ingot's, since the shaft/limb is
+  // what reads visually, not the arrowhead
   bow: {
-    colors: { primary: '#d9b25c', secondary: '#8a6a2f' },
+    colors: { primary: '#a9773f', secondary: '#6b4c22' },
   },
 };
 
