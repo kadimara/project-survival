@@ -117,15 +117,19 @@ export function fbm(
   return total / maxValue;
 }
 
-// preset tuned in the map generator tool (320x320) — scale is adjusted
-// proportionally (60 * 100/320) since this game's map is smaller, which
-// keeps the same pocket density/frequency rather than flattening it out
+// preset tuned in tools/noise-lab.html against this game's real seed/spawn
+// point — walkable ground is deliberately rare (~6% of the map) and forms
+// separated island-shaped blobs rather than one connected cave, so reaching
+// most resources means digging through long stretches of solid stone. Low
+// octave count keeps island edges smooth/chunky instead of speckled with
+// tiny 1-2 tile noise artifacts. See buildStones' spawn-safety carve below
+// for why this doesn't risk stranding the player with no dig path out.
 export const CAVE_PRESET = {
-  scale: 19,
-  octaves: 4,
+  scale: 55,
+  octaves: 2,
   persistence: 0.8,
   lacunarity: 2.0,
-  threshold: -0.16,
+  threshold: -0.5,
 };
 
 // ground tile variants (aesthetic checkerboard, not walkability)

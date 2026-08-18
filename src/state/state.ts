@@ -26,7 +26,12 @@ import {
   TILE_DEFS,
 } from '../constants';
 import { buildMap, buildStones, mulberry32 } from '../worldgen/worldgen';
-import { buildGroundAtlas, patchGroundAtlasTile } from '../render/ground-atlas';
+import {
+  buildGroundAtlas,
+  buildWorldMapAtlas,
+  patchGroundAtlasTile,
+  patchWorldMapAtlasTile,
+} from '../render/ground-atlas';
 
 export function terrainWalkable(
   state: GameState,
@@ -58,6 +63,7 @@ export function setTile(
   if (type === 'furnace') state.furnaces.set(key, { x, y });
   else state.furnaces.delete(key);
   patchGroundAtlasTile(state.refs, state.map, x, y, state.tiles.get(key));
+  patchWorldMapAtlasTile(state.refs, x, y, state.tiles.get(key));
 }
 
 // writes `type` as the occupant at (x,y), first clearing whichever existing
@@ -294,6 +300,7 @@ export function regenerateWorld(
 
   state.tiles = buildTiles(newSeed);
   buildGroundAtlas(state.refs, state.map, state.tiles);
+  buildWorldMapAtlas(state.refs, state.tiles);
   state.groundItems.clear();
   state.seeds.clear();
   state.smelters.clear();
@@ -373,6 +380,7 @@ export function createGameState(
   };
 
   buildGroundAtlas(refs, map, tiles);
+  buildWorldMapAtlas(refs, tiles);
   seedWildItems(state, INITIAL_ENERGY_SEED_COUNT, 'energySeed');
   placeSpawnOre(state);
   spawnEnemies(state);

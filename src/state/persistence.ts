@@ -33,7 +33,7 @@ import {
   TICK_MS,
 } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
-import { buildGroundAtlas } from '../render/ground-atlas';
+import { buildGroundAtlas, buildWorldMapAtlas } from '../render/ground-atlas';
 import { makeDummyEnemy, makeEnemy } from '../entities/entities';
 
 const SAVE_KEY = 'project-survival-save-v1';
@@ -309,5 +309,6 @@ export function loadGame(refs: GameRefs): GameState | null {
   };
 
   buildGroundAtlas(refs, map, tiles);
+  buildWorldMapAtlas(refs, tiles);
   return state;
 }

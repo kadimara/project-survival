@@ -1,8 +1,8 @@
 import type { CarryType, ItemType, TileType, ZoomLevel } from './types/types';
 
 export const TILE = 16;
-export const MAP_W = 100;
-export const MAP_H = 80;
+export const MAP_W = 240;
+export const MAP_H = 240;
 export const SPAWN_X = Math.floor(MAP_W / 2);
 export const SPAWN_Y = Math.floor(MAP_H / 2);
 export const INITIAL_SEED = 393845991;
