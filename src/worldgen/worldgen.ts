@@ -125,22 +125,21 @@ export function fbm(
 // tiny 1-2 tile noise artifacts. See buildStones' spawn-safety carve below
 // for why this doesn't risk stranding the player with no dig path out.
 export const CAVE_PRESET = {
-  scale: 55,
-  octaves: 2,
-  persistence: 0.8,
-  lacunarity: 2.0,
+  scale: 50,
+  octaves: 3,
+  persistence: 1,
+  lacunarity: 2,
   threshold: -0.5,
 };
 
-// ground tile variants (aesthetic checkerboard, not walkability)
-export const DIRT = 0,
-  DIRT2 = 1;
+// ground tile variant (aesthetic, not walkability)
+export const DIRT = 0;
 
 export function buildMap(mapW: number, mapH: number): number[][] {
   const map: number[][] = [];
   for (let y = 0; y < mapH; y++) {
     const row: number[] = [];
-    for (let x = 0; x < mapW; x++) row.push((x + y) % 5 === 0 ? DIRT2 : DIRT);
+    for (let x = 0; x < mapW; x++) row.push(DIRT);
     map.push(row);
   }
   return map;
@@ -159,13 +158,13 @@ export function buildStones(
   const stones = new Set<string>();
   const noise2D = makeSimplex2D(seed);
   const { scale, octaves, persistence, lacunarity, threshold } = CAVE_PRESET;
-  // direct 1:1 mapping: one noise sample per tile. Walkable below the
-  // threshold (matches the map generator tool's "walkable below" convention),
-  // solid at or above it.
+  // direct 1:1 mapping: one noise sample per tile. Solid below the
+  // threshold, walkable at or above it (matches the map generator tool's
+  // "walkable below" convention, flipped).
   for (let y = 0; y < mapH; y++) {
     for (let x = 0; x < mapW; x++) {
       const n = fbm(noise2D, x, y, octaves, persistence, lacunarity, scale);
-      if (n >= threshold) stones.add(x + ',' + y);
+      if (n < threshold) stones.add(x + ',' + y);
     }
   }
   const carve = (x: number, y: number) => {
