@@ -1,11 +1,11 @@
 import type { CarryType, ItemType, TileType, ZoomLevel } from './types/types';
 
 export const TILE = 16;
-export const MAP_W = 240;
-export const MAP_H = 240;
+export const MAP_W = 300;
+export const MAP_H = 300;
 export const SPAWN_X = Math.floor(MAP_W / 2);
 export const SPAWN_Y = Math.floor(MAP_H / 2);
-export const INITIAL_SEED = 393845991;
+export const INITIAL_SEED = 1674584215;
 
 // length of one simulation tick — OSRS-style: movement, attacks, and AI
 // decisions all resolve on this cadence instead of continuously (see
@@ -204,7 +204,7 @@ export const PLAYER_ATK_HP_COST = 1;
 export const ENERGY_HEAL_AMOUNT = 50;
 
 // ---- roaming enemies: wander until they see you, then chase and attack ----
-export const ENEMY_COUNT = 20;
+export const ENEMY_COUNT = 0;
 export const ENEMY_MAX_HP = 10;
 export const ENEMY_ATK_DAMAGE = 2;
 // in ticks — see PLAYER_ATK_COOLDOWN_TICKS's comment on why this is
