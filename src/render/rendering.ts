@@ -2,13 +2,12 @@
 // HP bars. Each function only takes the canvas context plus the primitive
 // values it needs to draw one thing, so none of it depends on the game's
 // entity/state model.
-import { DIRT, DIRT2 } from '../worldgen/worldgen';
+import { DIRT } from '../worldgen/worldgen';
 import { TILE_DEFS } from '../constants';
 import type { ItemType, TileType } from '../types/types';
 
 export const COLORS: Record<number, [string, string]> = {
-  [DIRT]: ['#4a331d', '#402c19'],
-  [DIRT2]: ['#523823', '#472f1d'],
+  [DIRT]: ['#393939', '#363636'],
 };
 
 export function drawTile(
@@ -19,11 +18,10 @@ export function drawTile(
   sy: number,
 ): void {
   const pair = COLORS[type] || COLORS[DIRT];
-  ctx.fillStyle = pair[0];
+  const tx = sx / TILE,
+    ty = sy / TILE;
+  ctx.fillStyle = (tx + ty) % 2 === 0 ? pair[0] : pair[1];
   ctx.fillRect(sx, sy, TILE, TILE);
-  ctx.fillStyle = pair[1];
-  ctx.fillRect(sx, sy, TILE / 2, TILE / 2);
-  ctx.fillRect(sx + TILE / 2, sy + TILE / 2, TILE / 2, TILE / 2);
 }
 
 export function drawObstacle(

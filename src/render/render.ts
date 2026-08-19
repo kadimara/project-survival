@@ -33,16 +33,10 @@ function furnacePhase(x: number, y: number): number {
 }
 
 export function renderWorldMap(state: GameState): void {
-  const { worldCanvas, worldCtx } = state.refs;
+  const { worldCanvas, worldCtx, worldAtlas } = state.refs;
   worldCtx.fillStyle = '#402c19';
   worldCtx.fillRect(0, 0, worldCanvas.width, worldCanvas.height);
-  for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
-      const type = tileAt(state, x, y);
-      worldCtx.fillStyle = type ? TILE_DEFS[type].colors.primary : '#4a331d';
-      worldCtx.fillRect(x * WORLD_TILE, y * WORLD_TILE, WORLD_TILE, WORLD_TILE);
-    }
-  }
+  worldCtx.drawImage(worldAtlas, 0, 0);
   for (const item of state.groundItems.values()) {
     worldCtx.fillStyle = ITEM_DEFS[item.type].colors.primary;
     worldCtx.fillRect(

@@ -74,6 +74,12 @@ export function initColonyGame(): void {
   const groundAtlasCtx = groundAtlas.getContext('2d')!;
   groundAtlasCtx.imageSmoothingEnabled = false;
 
+  const worldAtlas = document.createElement('canvas');
+  worldAtlas.width = MAP_W * WORLD_TILE;
+  worldAtlas.height = MAP_H * WORLD_TILE;
+  const worldAtlasCtx = worldAtlas.getContext('2d')!;
+  worldAtlasCtx.imageSmoothingEnabled = false;
+
   const refs: GameRefs = {
     canvas,
     ctx,
@@ -81,6 +87,8 @@ export function initColonyGame(): void {
     worldCtx,
     groundAtlas,
     groundAtlasCtx,
+    worldAtlas,
+    worldAtlasCtx,
   };
   const loaded = loadGame(refs);
   const state = loaded ?? createGameState(refs, spawnEnemies);

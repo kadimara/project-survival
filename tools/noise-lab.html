@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Noise Lab</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #1a1410;
+        color: #e8ddc8;
+        display: flex;
+        min-height: 100vh;
+      }
+      #controls {
+        width: 320px;
+        flex: none;
+        padding: 16px;
+        box-sizing: border-box;
+        background: #241c15;
+        border-right: 1px solid #3a2f22;
+        overflow-y: auto;
+      }
+      #main {
+        flex: 1;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 4px;
+      }
+      p.hint {
+        font-size: 12px;
+        color: #a89a80;
+        margin: 0 0 16px;
+        line-height: 1.4;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        margin: 12px 0 2px;
+        color: #cbbfa5;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      input[type='range'] {
+        flex: 1;
+      }
+      input[type='number'] {
+        width: 72px;
+        background: #12100c;
+        border: 1px solid #4a3d2c;
+        color: #e8ddc8;
+        border-radius: 4px;
+        padding: 3px 5px;
+      }
+      button {
+        background: #4a3d2c;
+        color: #e8ddc8;
+        border: 1px solid #6b5a3f;
+        border-radius: 4px;
+        padding: 5px 10px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      button:hover {
+        background: #5c4c37;
+      }
+      canvas {
+        background: #000;
+        image-rendering: pixelated;
+        border: 1px solid #3a2f22;
+      }
+      #stats {
+        font-size: 12px;
+        line-height: 1.7;
+        background: #12100c;
+        border: 1px solid #3a2f22;
+        border-radius: 4px;
+        padding: 10px 12px;
+        width: 100%;
+        max-width: 720px;
+        box-sizing: border-box;
+      }
+      #stats .warn {
+        color: #e0763f;
+      }
+      #output {
+        width: 100%;
+        max-width: 720px;
+        box-sizing: border-box;
+      }
+      pre {
+        background: #12100c;
+        border: 1px solid #3a2f22;
+        border-radius: 4px;
+        padding: 10px 12px;
+        font-size: 12px;
+        overflow-x: auto;
+        margin: 6px 0 0;
+      }
+      .legend {
+        display: flex;
+        gap: 16px;
+        font-size: 11px;
+        color: #cbbfa5;
+      }
+      .swatch {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-right: 4px;
+        vertical-align: middle;
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <h1>Noise Lab</h1>
+      <p class="hint">
+        Standalone tuner for project-survival's wasteland/boulder-structure
+        generator. Mirrors <code>mulberry32</code>/<code>makeSimplex2D</code>/<code
+          >fbm</code
+        >
+        from <code>src/worldgen/worldgen.ts</code> exactly, plus the radius-3
+        spawn-safety carve from <code>buildStones</code>. Walkable ground is
+        the majority "wasteland"; solid stone forms the rare separated
+        "boulder structures" the game embeds scavengeable resources in (see
+        <code>buildWorldTiles</code> in <code>src/state/state.ts</code>). The
+        preview uses land/rock colors for clarity &mdash; the real game still
+        renders stone/dirt tile colors, this is just about shape/coverage.
+        Nothing here touches the app; copy the output block into
+        <code>src/constants.ts</code> / <code>src/worldgen/worldgen.ts</code>
+        when you're happy with a config.
+      </p>
+
+      <label for="seed">Seed</label>
+      <div class="row">
+        <input type="number" id="seed" value="1674584215" />
+        <button id="randomSeed">Randomize</button>
+      </div>
+
+      <label for="mapW">Map width</label>
+      <input type="number" id="mapW" value="300" min="20" max="600" />
+      <label for="mapH">Map height</label>
+      <input type="number" id="mapH" value="300" min="20" max="600" />
+
+      <label for="scale">Scale <span id="scaleVal"></span></label>
+      <input type="range" id="scale" min="5" max="150" step="1" value="50" />
+
+      <label for="octaves">Octaves <span id="octavesVal"></span></label>
+      <input type="range" id="octaves" min="1" max="6" step="1" value="3" />
+
+      <label for="persistence"
+        >Persistence <span id="persistenceVal"></span
+      ></label>
+      <input
+        type="range"
+        id="persistence"
+        min="0.1"
+        max="1"
+        step="0.05"
+        value="1"
+      />
+
+      <label for="lacunarity"
+        >Lacunarity <span id="lacunarityVal"></span
+      ></label>
+      <input
+        type="range"
+        id="lacunarity"
+        min="1"
+        max="3"
+        step="0.1"
+        value="2.0"
+      />
+
+      <label for="threshold"
+        >Threshold <span id="thresholdVal"></span> (solid below)</label
+      >
+      <input
+        type="range"
+        id="threshold"
+        min="-1"
+        max="1"
+        step="0.01"
+        value="-0.5"
+      />
+
+      <div class="legend" style="margin-top: 16px">
+        <span
+          ><span class="swatch" style="background: #3f7a4f"></span>wasteland
+          (walkable)</span
+        >
+        <span
+          ><span class="swatch" style="background: #16233d"></span>boulders
+          (solid)</span
+        >
+      </div>
+      <div class="legend" style="margin-top: 6px">
+        <span
+          ><span class="swatch" style="background: #e0763f"></span>nearest
+          structure</span
+        >
+        <span
+          ><span class="swatch" style="background: #f0d060"></span>spawn
+          point</span
+        >
+      </div>
+    </div>
+
+    <div id="main">
+      <canvas id="preview"></canvas>
+      <div id="stats"></div>
+      <div id="output">
+        <div class="row">
+          <strong>Copy into the game</strong>
+          <button id="copyBtn">Copy</button>
+        </div>
+        <pre id="outputCode"></pre>
+      </div>
+    </div>
+
+    <script>
+      // ---- copied verbatim from src/worldgen/worldgen.ts (kept in sync by
+      // hand — this file has no build step / imports on purpose) ----
+      function mulberry32(seed) {
+        return function () {
+          seed |= 0;
+          seed = (seed + 0x6d2b79f5) | 0;
+          let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function makeSimplex2D(noiseSeed) {
+        const noiseRng = mulberry32(noiseSeed);
+        const p = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) p[i] = i;
+        for (let i = 255; i > 0; i--) {
+          const j = Math.floor(noiseRng() * (i + 1));
+          const tmp = p[i];
+          p[i] = p[j];
+          p[j] = tmp;
+        }
+        const perm = new Uint8Array(512);
+        const permMod12 = new Uint8Array(512);
+        for (let i = 0; i < 512; i++) {
+          perm[i] = p[i & 255];
+          permMod12[i] = perm[i] % 12;
+        }
+        const grad3 = [
+          [1, 1],
+          [-1, 1],
+          [1, -1],
+          [-1, -1],
+          [1, 0],
+          [-1, 0],
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+          [0, 1],
+          [0, -1],
+        ];
+        const F2 = 0.5 * (Math.sqrt(3) - 1);
+        const G2 = (3 - Math.sqrt(3)) / 6;
+        return function noise2D(xin, yin) {
+          let n0 = 0,
+            n1 = 0,
+            n2 = 0;
+          const s = (xin + yin) * F2;
+          const i = Math.floor(xin + s);
+          const j = Math.floor(yin + s);
+          const t = (i + j) * G2;
+          const X0 = i - t,
+            Y0 = j - t;
+          const x0 = xin - X0,
+            y0 = yin - Y0;
+          let i1, j1;
+          if (x0 > y0) {
+            i1 = 1;
+            j1 = 0;
+          } else {
+            i1 = 0;
+            j1 = 1;
+          }
+          const x1 = x0 - i1 + G2,
+            y1 = y0 - j1 + G2;
+          const x2 = x0 - 1 + 2 * G2,
+            y2 = y0 - 1 + 2 * G2;
+          const ii = i & 255,
+            jj = j & 255;
+          const gi0 = permMod12[ii + perm[jj]];
+          const gi1 = permMod12[ii + i1 + perm[jj + j1]];
+          const gi2 = permMod12[ii + 1 + perm[jj + 1]];
+          let t0 = 0.5 - x0 * x0 - y0 * y0;
+          if (t0 >= 0) {
+            t0 *= t0;
+            n0 = t0 * t0 * (grad3[gi0][0] * x0 + grad3[gi0][1] * y0);
+          }
+          let t1 = 0.5 - x1 * x1 - y1 * y1;
+          if (t1 >= 0) {
+            t1 *= t1;
+            n1 = t1 * t1 * (grad3[gi1][0] * x1 + grad3[gi1][1] * y1);
+          }
+          let t2 = 0.5 - x2 * x2 - y2 * y2;
+          if (t2 >= 0) {
+            t2 *= t2;
+            n2 = t2 * t2 * (grad3[gi2][0] * x2 + grad3[gi2][1] * y2);
+          }
+          return 70 * (n0 + n1 + n2);
+        };
+      }
+
+      function fbm(noise2D, x, y, octaves, persistence, lacunarity, scale) {
+        let total = 0,
+          amplitude = 1,
+          frequency = 1 / scale,
+          maxValue = 0;
+        for (let o = 0; o < octaves; o++) {
+          total += noise2D(x * frequency, y * frequency) * amplitude;
+          maxValue += amplitude;
+          amplitude *= persistence;
+          frequency *= lacunarity;
+        }
+        return total / maxValue;
+      }
+      // ---- end copied section ----
+
+      // 4-directional flood fill over a Uint8Array membership grid (1 = in
+      // the region being enumerated) — used on the solid grid to find
+      // boulder structures
+      function findRegions(grid, w, h) {
+        const seen = new Uint8Array(w * h);
+        const sizes = [];
+        const compId = new Int32Array(w * h).fill(-1);
+        let id = 0;
+        for (let sy = 0; sy < h; sy++) {
+          for (let sx = 0; sx < w; sx++) {
+            const idx0 = sy * w + sx;
+            if (!grid[idx0] || seen[idx0]) continue;
+            let size = 0;
+            const stack = [[sx, sy]];
+            seen[idx0] = 1;
+            while (stack.length) {
+              const [x, y] = stack.pop();
+              compId[y * w + x] = id;
+              size++;
+              for (const [nx, ny] of [
+                [x + 1, y],
+                [x - 1, y],
+                [x, y + 1],
+                [x, y - 1],
+              ]) {
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                const idx = ny * w + nx;
+                if (grid[idx] && !seen[idx]) {
+                  seen[idx] = 1;
+                  stack.push([nx, ny]);
+                }
+              }
+            }
+            sizes.push(size);
+            id++;
+          }
+        }
+        return { sizes, compId };
+      }
+
+      const els = {
+        seed: document.getElementById('seed'),
+        randomSeed: document.getElementById('randomSeed'),
+        mapW: document.getElementById('mapW'),
+        mapH: document.getElementById('mapH'),
+        scale: document.getElementById('scale'),
+        octaves: document.getElementById('octaves'),
+        persistence: document.getElementById('persistence'),
+        lacunarity: document.getElementById('lacunarity'),
+        threshold: document.getElementById('threshold'),
+        canvas: document.getElementById('preview'),
+        stats: document.getElementById('stats'),
+        outputCode: document.getElementById('outputCode'),
+        copyBtn: document.getElementById('copyBtn'),
+      };
+
+      const SPAWN_SAFETY_R = 3;
+      const MAX_CANVAS_SIDE = 720;
+
+      function readParams() {
+        return {
+          seed: parseInt(els.seed.value, 10) || 0,
+          w: Math.max(4, parseInt(els.mapW.value, 10) || 4),
+          h: Math.max(4, parseInt(els.mapH.value, 10) || 4),
+          scale: parseFloat(els.scale.value),
+          octaves: parseInt(els.octaves.value, 10),
+          persistence: parseFloat(els.persistence.value),
+          lacunarity: parseFloat(els.lacunarity.value),
+          threshold: parseFloat(els.threshold.value),
+        };
+      }
+
+      function generate(p) {
+        const {
+          seed,
+          w,
+          h,
+          scale,
+          octaves,
+          persistence,
+          lacunarity,
+          threshold,
+        } = p;
+        const spawnX = Math.floor(w / 2),
+          spawnY = Math.floor(h / 2);
+        const noise2D = makeSimplex2D(seed);
+        // matches buildStones exactly: solid when n < threshold, walkable
+        // (wasteland) at or above it
+        const solid = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const n = fbm(
+              noise2D,
+              x,
+              y,
+              octaves,
+              persistence,
+              lacunarity,
+              scale,
+            );
+            solid[y * w + x] = n < threshold ? 1 : 0;
+          }
+        }
+        // spawn-safety carve, same radius-3 diamond as buildStones — always
+        // clears a bubble of solid tiles so the player never spawns inside
+        // a structure
+        for (
+          let y = spawnY - SPAWN_SAFETY_R;
+          y <= spawnY + SPAWN_SAFETY_R;
+          y++
+        ) {
+          for (
+            let x = spawnX - SPAWN_SAFETY_R;
+            x <= spawnX + SPAWN_SAFETY_R;
+            x++
+          ) {
+            if (
+              Math.abs(x - spawnX) + Math.abs(y - spawnY) <= SPAWN_SAFETY_R &&
+              x > 0 &&
+              y > 0 &&
+              x < w - 1 &&
+              y < h - 1
+            ) {
+              solid[y * w + x] = 0;
+            }
+          }
+        }
+        const { sizes, compId } = findRegions(solid, w, h);
+        const walkableCount = w * h - sizes.reduce((a, b) => a + b, 0);
+        let nearestStructureDist = Infinity,
+          nearestComp = -1;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            if (compId[idx] < 0) continue;
+            const d = Math.abs(x - spawnX) + Math.abs(y - spawnY);
+            if (d < nearestStructureDist) {
+              nearestStructureDist = d;
+              nearestComp = compId[idx];
+            }
+          }
+        }
+        return {
+          w,
+          h,
+          spawnX,
+          spawnY,
+          solid,
+          compId,
+          sizes,
+          walkableCount,
+          nearestStructureDist,
+          nearestComp,
+        };
+      }
+
+      function draw(result) {
+        const { w, h, solid, compId, nearestComp, spawnX, spawnY } = result;
+        const px = Math.max(1, Math.floor(MAX_CANVAS_SIDE / Math.max(w, h)));
+        const canvas = els.canvas;
+        canvas.width = w * px;
+        canvas.height = h * px;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        const img = ctx.createImageData(w, h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            const isSolid = solid[idx] === 1;
+            const isNearestStructure = isSolid && compId[idx] === nearestComp;
+            const o = idx * 4;
+            if (isNearestStructure) {
+              img.data[o] = 0xe0;
+              img.data[o + 1] = 0x76;
+              img.data[o + 2] = 0x3f;
+            } else if (isSolid) {
+              img.data[o] = 0x16;
+              img.data[o + 1] = 0x23;
+              img.data[o + 2] = 0x3d;
+            } else {
+              img.data[o] = 0x3f;
+              img.data[o + 1] = 0x7a;
+              img.data[o + 2] = 0x4f;
+            }
+            img.data[o + 3] = 255;
+          }
+        }
+        // draw at 1px/tile onto an offscreen canvas, then scale up crisply
+        const off = document.createElement('canvas');
+        off.width = w;
+        off.height = h;
+        off.getContext('2d').putImageData(img, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(off, 0, 0, w, h, 0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#f0d060';
+        ctx.fillRect(spawnX * px - 1, spawnY * px - 1, px + 2, px + 2);
+      }
+
+      function renderStats(result) {
+        const { w, h, sizes, walkableCount, nearestStructureDist } = result;
+        const MIN_STRUCTURE_SIZE = 15;
+        const top = [...sizes].sort((a, b) => b - a).slice(0, 8);
+        const qualifying = sizes.filter((s) => s >= MIN_STRUCTURE_SIZE).length;
+        const pct = ((walkableCount / (w * h)) * 100).toFixed(1);
+        const distWarn =
+          nearestStructureDist > 40
+            ? '<span class="warn">' + nearestStructureDist + ' tiles</span>'
+            : nearestStructureDist + ' tiles';
+        els.stats.innerHTML =
+          '<div>Wasteland (walkable): <strong>' +
+          pct +
+          '%</strong> of ' +
+          w * h +
+          ' tiles</div>' +
+          '<div>Boulder structures: <strong>' +
+          sizes.length +
+          '</strong> total, <strong>' +
+          qualifying +
+          '</strong> at or above ' +
+          MIN_STRUCTURE_SIZE +
+          ' tiles (the in-game resource threshold)</div>' +
+          '<div>Largest structures: ' +
+          top.join(', ') +
+          '</div>' +
+          '<div>Nearest structure to spawn (Manhattan): ' +
+          distWarn +
+          '</div>';
+      }
+
+      function renderOutput(p) {
+        els.outputCode.textContent =
+          '// src/constants.ts\n' +
+          'export const MAP_W = ' +
+          p.w +
+          ';\n' +
+          'export const MAP_H = ' +
+          p.h +
+          ';\n\n' +
+          '// src/worldgen/worldgen.ts\n' +
+          'export const CAVE_PRESET = {\n' +
+          '  scale: ' +
+          p.scale +
+          ',\n' +
+          '  octaves: ' +
+          p.octaves +
+          ',\n' +
+          '  persistence: ' +
+          p.persistence +
+          ',\n' +
+          '  lacunarity: ' +
+          p.lacunarity +
+          ',\n' +
+          '  threshold: ' +
+          p.threshold +
+          ',\n' +
+          '};\n\n' +
+          '// seed used for this preview — the game reads INITIAL_SEED\n' +
+          '// from src/constants.ts independently\n' +
+          '// seed: ' +
+          p.seed;
+      }
+
+      function syncLabels(p) {
+        document.getElementById('scaleVal').textContent = p.scale;
+        document.getElementById('octavesVal').textContent = p.octaves;
+        document.getElementById('persistenceVal').textContent =
+          p.persistence.toFixed(2);
+        document.getElementById('lacunarityVal').textContent =
+          p.lacunarity.toFixed(1);
+        document.getElementById('thresholdVal').textContent =
+          p.threshold.toFixed(2);
+      }
+
+      function regenerate() {
+        const p = readParams();
+        syncLabels(p);
+        const result = generate(p);
+        draw(result);
+        renderStats(result);
+        renderOutput(p);
+      }
+
+      for (const id of [
+        'seed',
+        'mapW',
+        'mapH',
+        'scale',
+        'octaves',
+        'persistence',
+        'lacunarity',
+        'threshold',
+      ]) {
+        els[id].addEventListener('input', regenerate);
+      }
+      els.randomSeed.addEventListener('click', () => {
+        els.seed.value = Math.floor(Math.random() * 2 ** 31);
+        regenerate();
+      });
+      els.copyBtn.addEventListener('click', () => {
+        navigator.clipboard?.writeText(els.outputCode.textContent).then(() => {
+          els.copyBtn.textContent = 'Copied!';
+          setTimeout(() => (els.copyBtn.textContent = 'Copy'), 1000);
+        });
+      });
+
+      regenerate();
+    </script>
+  </body>
+</html>

@@ -3,6 +3,7 @@
 
 export type Rng = () => number;
 export type Noise2D = (x: number, y: number) => number;
+export type Cell = { x: number; y: number };
 
 export function mulberry32(seed: number): Rng {
   return function () {
@@ -117,26 +118,29 @@ export function fbm(
   return total / maxValue;
 }
 
-// preset tuned in the map generator tool (320x320) — scale is adjusted
-// proportionally (60 * 100/320) since this game's map is smaller, which
-// keeps the same pocket density/frequency rather than flattening it out
+// preset tuned in tools/noise-lab.html against this game's real seed/spawn
+// point — solid stone is deliberately rare and forms separated
+// boulder-cluster "structures" scattered across an otherwise open walkable
+// wasteland, so most resources (embedded in those clusters, see
+// buildWorldTiles in state/state.ts) mean seeking out and digging into a
+// structure rather than just walking up to them. See buildStones' spawn-
+// safety carve below for why the player never spawns inside one.
 export const CAVE_PRESET = {
-  scale: 19,
-  octaves: 4,
-  persistence: 0.8,
-  lacunarity: 2.0,
-  threshold: -0.16,
+  scale: 50,
+  octaves: 3,
+  persistence: 1,
+  lacunarity: 2,
+  threshold: -0.5,
 };
 
-// ground tile variants (aesthetic checkerboard, not walkability)
-export const DIRT = 0,
-  DIRT2 = 1;
+// ground tile variant (aesthetic, not walkability)
+export const DIRT = 0;
 
 export function buildMap(mapW: number, mapH: number): number[][] {
   const map: number[][] = [];
   for (let y = 0; y < mapH; y++) {
     const row: number[] = [];
-    for (let x = 0; x < mapW; x++) row.push((x + y) % 5 === 0 ? DIRT2 : DIRT);
+    for (let x = 0; x < mapW; x++) row.push(DIRT);
     map.push(row);
   }
   return map;
@@ -155,13 +159,13 @@ export function buildStones(
   const stones = new Set<string>();
   const noise2D = makeSimplex2D(seed);
   const { scale, octaves, persistence, lacunarity, threshold } = CAVE_PRESET;
-  // direct 1:1 mapping: one noise sample per tile. Walkable below the
-  // threshold (matches the map generator tool's "walkable below" convention),
-  // solid at or above it.
+  // direct 1:1 mapping: one noise sample per tile. Solid below the
+  // threshold, walkable at or above it (matches the map generator tool's
+  // "walkable below" convention, flipped).
   for (let y = 0; y < mapH; y++) {
     for (let x = 0; x < mapW; x++) {
       const n = fbm(noise2D, x, y, octaves, persistence, lacunarity, scale);
-      if (n >= threshold) stones.add(x + ',' + y);
+      if (n < threshold) stones.add(x + ',' + y);
     }
   }
   const carve = (x: number, y: number) => {
@@ -176,4 +180,71 @@ export function buildStones(
     }
   }
   return stones;
+}
+
+// enumerates the connected components of `members` on a mapW x mapH grid —
+// a generic 4-directional flood fill, parameterized on which cells count as
+// "in" so it works for any single-layer region set (e.g. passing buildStones'
+// own `stones` set directly enumerates the separated boulder-cluster
+// structures; nothing here is specific to solid vs. walkable). Each
+// returned region is the full list of tile coordinates in that connected
+// area; used by state.ts to decide which structures are big enough to
+// scavenge and where within them to place resources.
+export function findRegions(
+  members: Set<string>,
+  mapW: number,
+  mapH: number,
+): Cell[][] {
+  const seen = new Set<string>();
+  const regions: Cell[][] = [];
+  const dirs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (let y = 0; y < mapH; y++) {
+    for (let x = 0; x < mapW; x++) {
+      const key = x + ',' + y;
+      if (!members.has(key) || seen.has(key)) continue;
+      const region: Cell[] = [];
+      const stack: Cell[] = [{ x, y }];
+      seen.add(key);
+      while (stack.length) {
+        const cur = stack.pop()!;
+        region.push(cur);
+        for (const [dx, dy] of dirs) {
+          const nx = cur.x + dx,
+            ny = cur.y + dy;
+          if (nx < 0 || ny < 0 || nx >= mapW || ny >= mapH) continue;
+          const nk = nx + ',' + ny;
+          if (!members.has(nk) || seen.has(nk)) continue;
+          seen.add(nk);
+          stack.push({ x: nx, y: ny });
+        }
+      }
+      regions.push(region);
+    }
+  }
+  return regions;
+}
+
+// picks up to `count` distinct cells at random from `cells` (partial
+// Fisher-Yates via swap-and-pop) — used to reserve non-overlapping
+// placement tiles for resources within one island.
+export function pickDistinctCells(
+  cells: Cell[],
+  count: number,
+  rng: Rng,
+): Cell[] {
+  const pool = cells.slice();
+  const n = Math.min(count, pool.length);
+  const picked: Cell[] = [];
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor(rng() * pool.length);
+    picked.push(pool[idx]);
+    pool[idx] = pool[pool.length - 1];
+    pool.pop();
+  }
+  return picked;
 }

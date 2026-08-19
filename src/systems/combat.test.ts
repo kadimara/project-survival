@@ -33,6 +33,8 @@ import {
 vi.mock('../render/ground-atlas', () => ({
   buildGroundAtlas: vi.fn(),
   patchGroundAtlasTile: vi.fn(),
+  buildWorldMapAtlas: vi.fn(),
+  patchWorldMapAtlasTile: vi.fn(),
 }));
 
 function assertWorldWasReset(state: ReturnType<typeof createTestGameState>) {

@@ -145,6 +145,8 @@ export interface GameRefs {
   worldCtx: CanvasRenderingContext2D;
   groundAtlas: HTMLCanvasElement;
   groundAtlasCtx: CanvasRenderingContext2D;
+  worldAtlas: HTMLCanvasElement;
+  worldAtlasCtx: CanvasRenderingContext2D;
 }
 
 // DOM element refs for the HUD stat bar and the world-map overlay

@@ -5,7 +5,13 @@
 // drawImage call. Deliberately state-agnostic (plain refs/map/tiles
 // params, not GameState) so state.ts can call into this without an import
 // cycle.
-import { MAP_H, MAP_W, TILE } from '../constants';
+//
+// The same bake-once/patch/blit idea is reused below at WORLD_TILE
+// resolution for the world-map overview panel (buildWorldMapAtlas/
+// patchWorldMapAtlasTile) — that panel used to redraw every tile with a
+// fillRect loop on every animation frame it was open, which scales with
+// map area same as the reasoning above.
+import { MAP_H, MAP_W, TILE, TILE_DEFS, WORLD_TILE } from '../constants';
 import type { GameRefs, TileType } from '../types/types';
 import { drawObstacle, drawTile } from './rendering';
 
@@ -34,6 +40,38 @@ export function buildGroundAtlas(
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       patchGroundAtlasTile(refs, map, x, y, tiles.get(x + ',' + y));
+    }
+  }
+}
+
+// open ground (no tile entry) matches renderWorldMap's previous per-frame
+// fillStyle for an untyped cell
+const WORLD_MAP_OPEN_COLOR = '#4a331d';
+
+export function patchWorldMapAtlasTile(
+  refs: GameRefs,
+  x: number,
+  y: number,
+  type: TileType | undefined,
+): void {
+  refs.worldAtlasCtx.fillStyle = type
+    ? TILE_DEFS[type].colors.primary
+    : WORLD_MAP_OPEN_COLOR;
+  refs.worldAtlasCtx.fillRect(
+    x * WORLD_TILE,
+    y * WORLD_TILE,
+    WORLD_TILE,
+    WORLD_TILE,
+  );
+}
+
+export function buildWorldMapAtlas(
+  refs: GameRefs,
+  tiles: Map<string, TileType>,
+): void {
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      patchWorldMapAtlasTile(refs, x, y, tiles.get(x + ',' + y));
     }
   }
 }

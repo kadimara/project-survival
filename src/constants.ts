@@ -1,11 +1,11 @@
 import type { CarryType, ItemType, TileType, ZoomLevel } from './types/types';
 
 export const TILE = 16;
-export const MAP_W = 100;
-export const MAP_H = 80;
+export const MAP_W = 300;
+export const MAP_H = 300;
 export const SPAWN_X = Math.floor(MAP_W / 2);
 export const SPAWN_Y = Math.floor(MAP_H / 2);
-export const INITIAL_SEED = 393845991;
+export const INITIAL_SEED = 1674584215;
 
 // length of one simulation tick — OSRS-style: movement, attacks, and AI
 // decisions all resolve on this cadence instead of continuously (see
@@ -23,7 +23,22 @@ export const ZOOM_LEVELS: ZoomLevel[] = [
 export const DEFAULT_ZOOM_INDEX = 1;
 
 export const WORLD_TILE = 4;
-export const INITIAL_ENERGY_SEED_COUNT = 100;
+
+// ---- boulder-structure resources: buildStones' noise pass carves the
+// wasteland into separated solid-stone "structures" (see worldgen.ts's
+// CAVE_PRESET comment). Every structure at or above MIN_STRUCTURE_SIZE tiles
+// gets a full scavengeable resource kit embedded in it (see buildWorldTiles
+// in state/state.ts); anything smaller stays plain undecorated stone.
+// First-pass balance numbers. ----
+export const MIN_STRUCTURE_SIZE = 15; // stone tiles; below this, no resources
+export const STRUCTURE_ORE_COUNT = 3; // one sword's ingots + 1 spare
+export const STRUCTURE_WOOD_COUNT = 1; // one bow
+export const STRUCTURE_SOIL_COUNT = 1; // one farming plot
+export const STRUCTURE_ENERGY_SEED_DENSITY = 1 / 12; // ~1 food per 12 stone tiles
+export const STRUCTURE_MIN_ENERGY_SEED = 2; // even a small qualifying structure gets some food
+// salts the resource-placement RNG so it's independent of both the terrain
+// noise's own seed usage and gameplay's state.rng consumption order
+export const RESOURCE_PLACEMENT_SALT = 0x9e3779b9;
 
 // ---- tile defs: the grid layer (solid, atlas-baked). pickable is checked
 // by doPickup — every current tile is pickable, but the flag exists so a
@@ -190,7 +205,7 @@ export const PLAYER_ATK_HP_COST = 1;
 export const ENERGY_HEAL_AMOUNT = 50;
 
 // ---- roaming enemies: wander until they see you, then chase and attack ----
-export const ENEMY_COUNT = 20;
+export const ENEMY_COUNT = 0;
 export const ENEMY_MAX_HP = 10;
 export const ENEMY_ATK_DAMAGE = 2;
 // in ticks — see PLAYER_ATK_COOLDOWN_TICKS's comment on why this is
