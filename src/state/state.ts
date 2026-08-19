@@ -14,18 +14,30 @@ import type {
   TileType,
 } from '../types/types';
 import {
-  INITIAL_ENERGY_SEED_COUNT,
   INITIAL_SEED,
   MAP_H,
   MAP_W,
+  MIN_STRUCTURE_SIZE,
   PLAYER_MAX_HP,
+  RESOURCE_PLACEMENT_SALT,
   SPAWN_X,
   SPAWN_Y,
+  STRUCTURE_ENERGY_SEED_DENSITY,
+  STRUCTURE_MIN_ENERGY_SEED,
+  STRUCTURE_ORE_COUNT,
+  STRUCTURE_SOIL_COUNT,
+  STRUCTURE_WOOD_COUNT,
   TICK_MS,
   TILE,
   TILE_DEFS,
 } from '../constants';
-import { buildMap, buildStones, mulberry32 } from '../worldgen/worldgen';
+import {
+  buildMap,
+  buildStones,
+  findIslands,
+  mulberry32,
+  pickDistinctCells,
+} from '../worldgen/worldgen';
 import {
   buildGroundAtlas,
   buildWorldMapAtlas,
@@ -226,50 +238,53 @@ export function placeGroundItemNear(
   return true;
 }
 
-// scatters `count` wild ground items of `type` across random open tiles —
-// shared by the wild-energy and wild-energySeed seeding loops below, since
-// both createGameState and regenerateWorld need to run each twice
-function seedWildItems(state: GameState, count: number, type: ItemType): void {
-  for (let i = 0; i < count; i++) {
-    const s = randomOpenTile(state);
-    if (s) state.groundItems.set(s.x + ',' + s.y, { ...s, type });
-  }
-}
-
-// the extra 'stone' tiles buildTiles adds near spawn (see its comment) each
-// get an ore ground item — enough (3) to smelt into ingots for one sword
-// (2 ingots) with one ore left over, purely so the ore->ingot->sword loop is
-// playable/testable in-game without a real ore-vein worldgen pass
-const SPAWN_ORE_OFFSETS: [number, number][] = [
-  [2, 0],
-  [2, 1],
-  [2, -1],
-];
-
-function placeSpawnOre(state: GameState): void {
-  for (const [dx, dy] of SPAWN_ORE_OFFSETS) {
-    const x = SPAWN_X + dx,
-      y = SPAWN_Y + dy;
-    state.groundItems.set(x + ',' + y, { x, y, type: 'ore' });
-  }
-}
-
 // builds the noise-generated 'stone' layer via worldgen.ts's buildStones
-// (left completely untouched), then adds a few extra fixed tiles near
-// spawn purely so those types (and the ore ground items sitting on some of
-// them, see placeSpawnOre) are visible/testable in-game — not part of
-// procedural generation, fixed offsets within buildStones's own carved
-// spawn-safety bubble guarantee they're always open ground and reachable
-function buildTiles(seed: number): Map<string, TileType> {
-  const keys = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
+// (left completely untouched), then enumerates the separated walkable
+// "structures" that noise pass produces (findIslands) and, for every one at
+// or above MIN_STRUCTURE_SIZE, reserves a cluster of its tiles for a full
+// resource kit: wood/soil become tiles (written directly here, same as the
+// tile layer above), ore/energySeed become ground items returned separately
+// since state.groundItems isn't populated until after the atlas is built
+// (see createGameState/regenerateWorld). Islands below the threshold are
+// left bare — small slivers of wasteland, not real scavenge sites. Because
+// buildStones' spawn-safety carve always opens a 25-tile bubble regardless
+// of seed, spawn always qualifies as a structure on its own under this same
+// general rule, so it needs no special-cased placement.
+function buildWorldTiles(seed: number): {
+  tiles: Map<string, TileType>;
+  resourceItems: GroundItem[];
+} {
+  const stones = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
   const tiles = new Map<string, TileType>();
-  for (const key of keys) tiles.set(key, 'stone');
-  for (const [dx, dy] of SPAWN_ORE_OFFSETS) {
-    tiles.set(SPAWN_X + dx + ',' + (SPAWN_Y + dy), 'stone');
+  for (const key of stones) tiles.set(key, 'stone');
+
+  const islands = findIslands(stones, MAP_W, MAP_H);
+  const rng = mulberry32(seed ^ RESOURCE_PLACEMENT_SALT);
+  const resourceItems: GroundItem[] = [];
+
+  for (const island of islands) {
+    if (island.length < MIN_STRUCTURE_SIZE) continue;
+    const energySeedCount = Math.max(
+      STRUCTURE_MIN_ENERGY_SEED,
+      Math.round(island.length * STRUCTURE_ENERGY_SEED_DENSITY),
+    );
+    const reserveCount =
+      STRUCTURE_WOOD_COUNT +
+      STRUCTURE_SOIL_COUNT +
+      STRUCTURE_ORE_COUNT +
+      energySeedCount;
+    const cells = pickDistinctCells(island, reserveCount, rng);
+    let i = 0;
+    for (let n = 0; n < STRUCTURE_WOOD_COUNT && i < cells.length; n++, i++)
+      tiles.set(cells[i].x + ',' + cells[i].y, 'wood');
+    for (let n = 0; n < STRUCTURE_SOIL_COUNT && i < cells.length; n++, i++)
+      tiles.set(cells[i].x + ',' + cells[i].y, 'soil');
+    for (let n = 0; n < STRUCTURE_ORE_COUNT && i < cells.length; n++, i++)
+      resourceItems.push({ x: cells[i].x, y: cells[i].y, type: 'ore' });
+    for (; i < cells.length; i++)
+      resourceItems.push({ x: cells[i].x, y: cells[i].y, type: 'energySeed' });
   }
-  tiles.set(SPAWN_X - 2 + ',' + SPAWN_Y, 'soil');
-  tiles.set(SPAWN_X + ',' + (SPAWN_Y - 2), 'wood');
-  return tiles;
+  return { tiles, resourceItems };
 }
 
 export function spawnFloatingText(
@@ -298,7 +313,8 @@ export function regenerateWorld(
   state.seed = newSeed;
   state.rng = mulberry32(newSeed);
 
-  state.tiles = buildTiles(newSeed);
+  const { tiles, resourceItems } = buildWorldTiles(newSeed);
+  state.tiles = tiles;
   buildGroundAtlas(state.refs, state.map, state.tiles);
   buildWorldMapAtlas(state.refs, state.tiles);
   state.groundItems.clear();
@@ -306,8 +322,8 @@ export function regenerateWorld(
   state.smelters.clear();
   state.furnaces.clear();
   state.projectiles.length = 0;
-  seedWildItems(state, INITIAL_ENERGY_SEED_COUNT, 'energySeed');
-  placeSpawnOre(state);
+  for (const item of resourceItems)
+    state.groundItems.set(item.x + ',' + item.y, item);
   spawnEnemies(state);
 
   const { player } = state;
@@ -332,7 +348,7 @@ export function createGameState(
   const seed = INITIAL_SEED;
   const rng = mulberry32(seed);
   const map = buildMap(MAP_W, MAP_H);
-  const tiles = buildTiles(seed);
+  const { tiles, resourceItems } = buildWorldTiles(seed);
 
   const state: GameState = {
     refs,
@@ -381,8 +397,8 @@ export function createGameState(
 
   buildGroundAtlas(refs, map, tiles);
   buildWorldMapAtlas(refs, tiles);
-  seedWildItems(state, INITIAL_ENERGY_SEED_COUNT, 'energySeed');
-  placeSpawnOre(state);
+  for (const item of resourceItems)
+    state.groundItems.set(item.x + ',' + item.y, item);
   spawnEnemies(state);
 
   return state;

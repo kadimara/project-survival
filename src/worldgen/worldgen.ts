@@ -3,6 +3,7 @@
 
 export type Rng = () => number;
 export type Noise2D = (x: number, y: number) => number;
+export type Cell = { x: number; y: number };
 
 export function mulberry32(seed: number): Rng {
   return function () {
@@ -180,4 +181,70 @@ export function buildStones(
     }
   }
   return stones;
+}
+
+// enumerates the separated walkable landmasses buildStones' noise pass
+// produces — a 4-directional flood fill over the walkable complement of
+// `stones` (the same set buildStones returns, already including its
+// spawn-safety carve). Each returned island is the full list of tile
+// coordinates in that connected region; used by state.ts to decide which
+// islands are big enough to scavenge and where within them to place
+// resources.
+export function findIslands(
+  stones: Set<string>,
+  mapW: number,
+  mapH: number,
+): Cell[][] {
+  const seen = new Set<string>();
+  const islands: Cell[][] = [];
+  const dirs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (let y = 0; y < mapH; y++) {
+    for (let x = 0; x < mapW; x++) {
+      const key = x + ',' + y;
+      if (stones.has(key) || seen.has(key)) continue;
+      const island: Cell[] = [];
+      const stack: Cell[] = [{ x, y }];
+      seen.add(key);
+      while (stack.length) {
+        const cur = stack.pop()!;
+        island.push(cur);
+        for (const [dx, dy] of dirs) {
+          const nx = cur.x + dx,
+            ny = cur.y + dy;
+          if (nx < 0 || ny < 0 || nx >= mapW || ny >= mapH) continue;
+          const nk = nx + ',' + ny;
+          if (stones.has(nk) || seen.has(nk)) continue;
+          seen.add(nk);
+          stack.push({ x: nx, y: ny });
+        }
+      }
+      islands.push(island);
+    }
+  }
+  return islands;
+}
+
+// picks up to `count` distinct cells at random from `cells` (partial
+// Fisher-Yates via swap-and-pop) — used to reserve non-overlapping
+// placement tiles for resources within one island.
+export function pickDistinctCells(
+  cells: Cell[],
+  count: number,
+  rng: Rng,
+): Cell[] {
+  const pool = cells.slice();
+  const n = Math.min(count, pool.length);
+  const picked: Cell[] = [];
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor(rng() * pool.length);
+    picked.push(pool[idx]);
+    pool[idx] = pool[pool.length - 1];
+    pool.pop();
+  }
+  return picked;
 }
