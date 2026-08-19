@@ -119,12 +119,12 @@ export function fbm(
 }
 
 // preset tuned in tools/noise-lab.html against this game's real seed/spawn
-// point — walkable ground is deliberately rare (~6% of the map) and forms
-// separated island-shaped blobs rather than one connected cave, so reaching
-// most resources means digging through long stretches of solid stone. Low
-// octave count keeps island edges smooth/chunky instead of speckled with
-// tiny 1-2 tile noise artifacts. See buildStones' spawn-safety carve below
-// for why this doesn't risk stranding the player with no dig path out.
+// point — solid stone is deliberately rare and forms separated
+// boulder-cluster "structures" scattered across an otherwise open walkable
+// wasteland, so most resources (embedded in those clusters, see
+// buildWorldTiles in state/state.ts) mean seeking out and digging into a
+// structure rather than just walking up to them. See buildStones' spawn-
+// safety carve below for why the player never spawns inside one.
 export const CAVE_PRESET = {
   scale: 50,
   octaves: 3,
@@ -182,20 +182,21 @@ export function buildStones(
   return stones;
 }
 
-// enumerates the separated walkable landmasses buildStones' noise pass
-// produces — a 4-directional flood fill over the walkable complement of
-// `stones` (the same set buildStones returns, already including its
-// spawn-safety carve). Each returned island is the full list of tile
-// coordinates in that connected region; used by state.ts to decide which
-// islands are big enough to scavenge and where within them to place
-// resources.
-export function findIslands(
-  stones: Set<string>,
+// enumerates the connected components of `members` on a mapW x mapH grid —
+// a generic 4-directional flood fill, parameterized on which cells count as
+// "in" so it works for any single-layer region set (e.g. passing buildStones'
+// own `stones` set directly enumerates the separated boulder-cluster
+// structures; nothing here is specific to solid vs. walkable). Each
+// returned region is the full list of tile coordinates in that connected
+// area; used by state.ts to decide which structures are big enough to
+// scavenge and where within them to place resources.
+export function findRegions(
+  members: Set<string>,
   mapW: number,
   mapH: number,
 ): Cell[][] {
   const seen = new Set<string>();
-  const islands: Cell[][] = [];
+  const regions: Cell[][] = [];
   const dirs = [
     [1, 0],
     [-1, 0],
@@ -205,27 +206,27 @@ export function findIslands(
   for (let y = 0; y < mapH; y++) {
     for (let x = 0; x < mapW; x++) {
       const key = x + ',' + y;
-      if (stones.has(key) || seen.has(key)) continue;
-      const island: Cell[] = [];
+      if (!members.has(key) || seen.has(key)) continue;
+      const region: Cell[] = [];
       const stack: Cell[] = [{ x, y }];
       seen.add(key);
       while (stack.length) {
         const cur = stack.pop()!;
-        island.push(cur);
+        region.push(cur);
         for (const [dx, dy] of dirs) {
           const nx = cur.x + dx,
             ny = cur.y + dy;
           if (nx < 0 || ny < 0 || nx >= mapW || ny >= mapH) continue;
           const nk = nx + ',' + ny;
-          if (stones.has(nk) || seen.has(nk)) continue;
+          if (!members.has(nk) || seen.has(nk)) continue;
           seen.add(nk);
           stack.push({ x: nx, y: ny });
         }
       }
-      islands.push(island);
+      regions.push(region);
     }
   }
-  return islands;
+  return regions;
 }
 
 // picks up to `count` distinct cells at random from `cells` (partial

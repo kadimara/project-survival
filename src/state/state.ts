@@ -34,7 +34,7 @@ import {
 import {
   buildMap,
   buildStones,
-  findIslands,
+  findRegions,
   mulberry32,
   pickDistinctCells,
 } from '../worldgen/worldgen';
@@ -239,17 +239,23 @@ export function placeGroundItemNear(
 }
 
 // builds the noise-generated 'stone' layer via worldgen.ts's buildStones
-// (left completely untouched), then enumerates the separated walkable
-// "structures" that noise pass produces (findIslands) and, for every one at
-// or above MIN_STRUCTURE_SIZE, reserves a cluster of its tiles for a full
-// resource kit: wood/soil become tiles (written directly here, same as the
-// tile layer above), ore/energySeed become ground items returned separately
-// since state.groundItems isn't populated until after the atlas is built
-// (see createGameState/regenerateWorld). Islands below the threshold are
-// left bare — small slivers of wasteland, not real scavenge sites. Because
-// buildStones' spawn-safety carve always opens a 25-tile bubble regardless
-// of seed, spawn always qualifies as a structure on its own under this same
-// general rule, so it needs no special-cased placement.
+// (left completely untouched), then enumerates the separated boulder-cluster
+// "structures" that noise pass produces (findRegions, called directly on
+// buildStones' own `stones` set — each connected clump of solid tiles is one
+// structure) and, for every one at or above MIN_STRUCTURE_SIZE, reserves a
+// cluster of its tiles for a full resource kit: wood/soil overwrite the
+// 'stone' tile with a different diggable type (so digging that specific tile
+// yields wood/soil instead of plain stone); ore/energySeed are ground items
+// placed on cells that stay 'stone' — same pattern the ground already uses
+// for it elsewhere (doPickup checks state.groundItems before the tile, so
+// the item is grabbed on approach and the stone tile itself still needs a
+// separate dig to clear). Ground items are returned separately since
+// state.groundItems isn't populated until after the atlas is built (see
+// createGameState/regenerateWorld). Clusters below the threshold are left
+// as plain undecorated stone — small rubble, not real scavenge sites.
+// Because buildStones' spawn-safety carve always removes a 25-tile bubble
+// from `stones` regardless of seed, the player never spawns inside a
+// structure — it always starts in the open wasteland and has to go find one.
 function buildWorldTiles(seed: number): {
   tiles: Map<string, TileType>;
   resourceItems: GroundItem[];
@@ -258,22 +264,22 @@ function buildWorldTiles(seed: number): {
   const tiles = new Map<string, TileType>();
   for (const key of stones) tiles.set(key, 'stone');
 
-  const islands = findIslands(stones, MAP_W, MAP_H);
+  const structures = findRegions(stones, MAP_W, MAP_H);
   const rng = mulberry32(seed ^ RESOURCE_PLACEMENT_SALT);
   const resourceItems: GroundItem[] = [];
 
-  for (const island of islands) {
-    if (island.length < MIN_STRUCTURE_SIZE) continue;
+  for (const structure of structures) {
+    if (structure.length < MIN_STRUCTURE_SIZE) continue;
     const energySeedCount = Math.max(
       STRUCTURE_MIN_ENERGY_SEED,
-      Math.round(island.length * STRUCTURE_ENERGY_SEED_DENSITY),
+      Math.round(structure.length * STRUCTURE_ENERGY_SEED_DENSITY),
     );
     const reserveCount =
       STRUCTURE_WOOD_COUNT +
       STRUCTURE_SOIL_COUNT +
       STRUCTURE_ORE_COUNT +
       energySeedCount;
-    const cells = pickDistinctCells(island, reserveCount, rng);
+    const cells = pickDistinctCells(structure, reserveCount, rng);
     let i = 0;
     for (let n = 0; n < STRUCTURE_WOOD_COUNT && i < cells.length; n++, i++)
       tiles.set(cells[i].x + ',' + cells[i].y, 'wood');

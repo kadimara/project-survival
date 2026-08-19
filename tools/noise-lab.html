@@ -132,33 +132,38 @@
     <div id="controls">
       <h1>Noise Lab</h1>
       <p class="hint">
-        Standalone tuner for project-survival's cave/island generator. Mirrors
-        <code>mulberry32</code>/<code>makeSimplex2D</code>/<code>fbm</code> from
-        <code>src/worldgen/worldgen.ts</code> exactly, plus the radius-3
-        spawn-safety carve from <code>buildStones</code>. The preview uses
-        land/sea colors for clarity &mdash; the real game still renders
-        stone/dirt tile colors, this is just about shape/coverage. Nothing here
-        touches the app; copy the output block into
+        Standalone tuner for project-survival's wasteland/boulder-structure
+        generator. Mirrors <code>mulberry32</code>/<code>makeSimplex2D</code>/<code
+          >fbm</code
+        >
+        from <code>src/worldgen/worldgen.ts</code> exactly, plus the radius-3
+        spawn-safety carve from <code>buildStones</code>. Walkable ground is
+        the majority "wasteland"; solid stone forms the rare separated
+        "boulder structures" the game embeds scavengeable resources in (see
+        <code>buildWorldTiles</code> in <code>src/state/state.ts</code>). The
+        preview uses land/rock colors for clarity &mdash; the real game still
+        renders stone/dirt tile colors, this is just about shape/coverage.
+        Nothing here touches the app; copy the output block into
         <code>src/constants.ts</code> / <code>src/worldgen/worldgen.ts</code>
         when you're happy with a config.
       </p>
 
       <label for="seed">Seed</label>
       <div class="row">
-        <input type="number" id="seed" value="393845991" />
+        <input type="number" id="seed" value="1674584215" />
         <button id="randomSeed">Randomize</button>
       </div>
 
       <label for="mapW">Map width</label>
-      <input type="number" id="mapW" value="240" min="20" max="600" />
+      <input type="number" id="mapW" value="300" min="20" max="600" />
       <label for="mapH">Map height</label>
-      <input type="number" id="mapH" value="240" min="20" max="600" />
+      <input type="number" id="mapH" value="300" min="20" max="600" />
 
       <label for="scale">Scale <span id="scaleVal"></span></label>
-      <input type="range" id="scale" min="5" max="150" step="1" value="55" />
+      <input type="range" id="scale" min="5" max="150" step="1" value="50" />
 
       <label for="octaves">Octaves <span id="octavesVal"></span></label>
-      <input type="range" id="octaves" min="1" max="6" step="1" value="2" />
+      <input type="range" id="octaves" min="1" max="6" step="1" value="3" />
 
       <label for="persistence"
         >Persistence <span id="persistenceVal"></span
@@ -169,7 +174,7 @@
         min="0.1"
         max="1"
         step="0.05"
-        value="0.8"
+        value="1"
       />
 
       <label for="lacunarity"
@@ -185,7 +190,7 @@
       />
 
       <label for="threshold"
-        >Threshold <span id="thresholdVal"></span> (walkable below)</label
+        >Threshold <span id="thresholdVal"></span> (solid below)</label
       >
       <input
         type="range"
@@ -198,18 +203,18 @@
 
       <div class="legend" style="margin-top: 16px">
         <span
-          ><span class="swatch" style="background: #3f7a4f"></span>land
+          ><span class="swatch" style="background: #3f7a4f"></span>wasteland
           (walkable)</span
         >
         <span
-          ><span class="swatch" style="background: #16233d"></span>sea
+          ><span class="swatch" style="background: #16233d"></span>boulders
           (solid)</span
         >
       </div>
       <div class="legend" style="margin-top: 6px">
         <span
-          ><span class="swatch" style="background: #e0763f"></span>spawn's
-          island</span
+          ><span class="swatch" style="background: #e0763f"></span>nearest
+          structure</span
         >
         <span
           ><span class="swatch" style="background: #f0d060"></span>spawn
@@ -338,8 +343,10 @@
       }
       // ---- end copied section ----
 
-      // 4-directional flood fill over a Uint8Array walkable grid
-      function findIslands(grid, w, h) {
+      // 4-directional flood fill over a Uint8Array membership grid (1 = in
+      // the region being enumerated) — used on the solid grid to find
+      // boulder structures
+      function findRegions(grid, w, h) {
         const seen = new Uint8Array(w * h);
         const sizes = [];
         const compId = new Int32Array(w * h).fill(-1);
@@ -422,8 +429,9 @@
         const spawnX = Math.floor(w / 2),
           spawnY = Math.floor(h / 2);
         const noise2D = makeSimplex2D(seed);
-        const walkable = new Uint8Array(w * h);
-        let nearestRawDist = Infinity;
+        // matches buildStones exactly: solid when n < threshold, walkable
+        // (wasteland) at or above it
+        const solid = new Uint8Array(w * h);
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
             const n = fbm(
@@ -435,16 +443,12 @@
               lacunarity,
               scale,
             );
-            const isWalkable = n < threshold;
-            walkable[y * w + x] = isWalkable ? 1 : 0;
-            if (isWalkable) {
-              const d = Math.abs(x - spawnX) + Math.abs(y - spawnY);
-              if (d < nearestRawDist) nearestRawDist = d;
-            }
+            solid[y * w + x] = n < threshold ? 1 : 0;
           }
         }
-        // spawn-safety carve, same radius-3 diamond as buildStones
-        let carvedBubbleSize = 0;
+        // spawn-safety carve, same radius-3 diamond as buildStones — always
+        // clears a bubble of solid tiles so the player never spawns inside
+        // a structure
         for (
           let y = spawnY - SPAWN_SAFETY_R;
           y <= spawnY + SPAWN_SAFETY_R;
@@ -462,33 +466,41 @@
               x < w - 1 &&
               y < h - 1
             ) {
-              walkable[y * w + x] = 1;
-              carvedBubbleSize++;
+              solid[y * w + x] = 0;
             }
           }
         }
-        const { sizes, compId } = findIslands(walkable, w, h);
-        const spawnComp = compId[spawnY * w + spawnX];
-        const spawnIslandSize = spawnComp >= 0 ? sizes[spawnComp] : 0;
-        const walkableCount = sizes.reduce((a, b) => a + b, 0);
+        const { sizes, compId } = findRegions(solid, w, h);
+        const walkableCount = w * h - sizes.reduce((a, b) => a + b, 0);
+        let nearestStructureDist = Infinity,
+          nearestComp = -1;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            if (compId[idx] < 0) continue;
+            const d = Math.abs(x - spawnX) + Math.abs(y - spawnY);
+            if (d < nearestStructureDist) {
+              nearestStructureDist = d;
+              nearestComp = compId[idx];
+            }
+          }
+        }
         return {
           w,
           h,
           spawnX,
           spawnY,
-          walkable,
+          solid,
           compId,
-          spawnComp,
           sizes,
-          spawnIslandSize,
           walkableCount,
-          nearestRawDist,
-          carvedBubbleSize,
+          nearestStructureDist,
+          nearestComp,
         };
       }
 
       function draw(result) {
-        const { w, h, walkable, compId, spawnComp, spawnX, spawnY } = result;
+        const { w, h, solid, compId, nearestComp, spawnX, spawnY } = result;
         const px = Math.max(1, Math.floor(MAX_CANVAS_SIDE / Math.max(w, h)));
         const canvas = els.canvas;
         canvas.width = w * px;
@@ -499,17 +511,17 @@
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
             const idx = y * w + x;
-            const isLand = walkable[idx] === 1;
-            const isSpawnIsland = isLand && compId[idx] === spawnComp;
+            const isSolid = solid[idx] === 1;
+            const isNearestStructure = isSolid && compId[idx] === nearestComp;
             const o = idx * 4;
-            if (!isLand) {
-              img.data[o] = 0x16;
-              img.data[o + 1] = 0x23;
-              img.data[o + 2] = 0x3d;
-            } else if (isSpawnIsland) {
+            if (isNearestStructure) {
               img.data[o] = 0xe0;
               img.data[o + 1] = 0x76;
               img.data[o + 2] = 0x3f;
+            } else if (isSolid) {
+              img.data[o] = 0x16;
+              img.data[o + 1] = 0x23;
+              img.data[o + 2] = 0x3d;
             } else {
               img.data[o] = 0x3f;
               img.data[o + 1] = 0x7a;
@@ -531,46 +543,34 @@
       }
 
       function renderStats(result) {
-        const {
-          w,
-          h,
-          sizes,
-          spawnIslandSize,
-          walkableCount,
-          nearestRawDist,
-          carvedBubbleSize,
-        } = result;
+        const { w, h, sizes, walkableCount, nearestStructureDist } = result;
+        const MIN_STRUCTURE_SIZE = 15;
         const top = [...sizes].sort((a, b) => b - a).slice(0, 8);
-        const tiny = sizes.filter((s) => s < 5).length;
+        const qualifying = sizes.filter((s) => s >= MIN_STRUCTURE_SIZE).length;
         const pct = ((walkableCount / (w * h)) * 100).toFixed(1);
-        const warn =
-          spawnIslandSize <= carvedBubbleSize
-            ? '<span class="warn">spawn bubble is isolated from any other island — nearest is ' +
-              nearestRawDist +
-              ' tiles away (Manhattan), all of it diggable stone</span>'
-            : 'spawn bubble connects directly into a ' +
-              spawnIslandSize +
-              '-tile island';
+        const distWarn =
+          nearestStructureDist > 40
+            ? '<span class="warn">' + nearestStructureDist + ' tiles</span>'
+            : nearestStructureDist + ' tiles';
         els.stats.innerHTML =
-          '<div>Walkable: <strong>' +
+          '<div>Wasteland (walkable): <strong>' +
           pct +
           '%</strong> of ' +
           w * h +
           ' tiles</div>' +
-          '<div>Islands: <strong>' +
+          '<div>Boulder structures: <strong>' +
           sizes.length +
-          '</strong> (' +
-          tiny +
-          ' under 5 tiles)</div>' +
-          '<div>Largest islands: ' +
+          '</strong> total, <strong>' +
+          qualifying +
+          '</strong> at or above ' +
+          MIN_STRUCTURE_SIZE +
+          ' tiles (the in-game resource threshold)</div>' +
+          '<div>Largest structures: ' +
           top.join(', ') +
           '</div>' +
-          '<div>Spawn: ' +
-          warn +
-          '</div>' +
-          '<div>Nearest walkable tile to spawn (pre-carve): ' +
-          nearestRawDist +
-          ' tiles</div>';
+          '<div>Nearest structure to spawn (Manhattan): ' +
+          distWarn +
+          '</div>';
       }
 
       function renderOutput(p) {

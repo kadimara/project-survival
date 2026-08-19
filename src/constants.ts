@@ -24,16 +24,17 @@ export const DEFAULT_ZOOM_INDEX = 1;
 
 export const WORLD_TILE = 4;
 
-// ---- island resources: buildStones' noise pass carves the map into
-// separated walkable "structures" (see worldgen.ts's CAVE_PRESET comment).
-// Every structure at or above MIN_STRUCTURE_SIZE tiles gets a full
-// scavengeable resource kit (see buildWorldTiles in state/state.ts);
-// anything smaller stays bare wasteland. First-pass balance numbers. ----
-export const MIN_STRUCTURE_SIZE = 15; // walkable tiles; below this, no resources
+// ---- boulder-structure resources: buildStones' noise pass carves the
+// wasteland into separated solid-stone "structures" (see worldgen.ts's
+// CAVE_PRESET comment). Every structure at or above MIN_STRUCTURE_SIZE tiles
+// gets a full scavengeable resource kit embedded in it (see buildWorldTiles
+// in state/state.ts); anything smaller stays plain undecorated stone.
+// First-pass balance numbers. ----
+export const MIN_STRUCTURE_SIZE = 15; // stone tiles; below this, no resources
 export const STRUCTURE_ORE_COUNT = 3; // one sword's ingots + 1 spare
 export const STRUCTURE_WOOD_COUNT = 1; // one bow
 export const STRUCTURE_SOIL_COUNT = 1; // one farming plot
-export const STRUCTURE_ENERGY_SEED_DENSITY = 1 / 12; // ~1 food per 12 walkable tiles
+export const STRUCTURE_ENERGY_SEED_DENSITY = 1 / 12; // ~1 food per 12 stone tiles
 export const STRUCTURE_MIN_ENERGY_SEED = 2; // even a small qualifying structure gets some food
 // salts the resource-placement RNG so it's independent of both the terrain
 // noise's own seed usage and gameplay's state.rng consumption order
