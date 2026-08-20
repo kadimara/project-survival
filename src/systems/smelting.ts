@@ -1,6 +1,6 @@
 // Furnace-based smelting: any item can be dumped onto an empty furnace
-// obstacle (gated by openForItem in state/state.ts, same as soil), tracked
-// in state.smelters rather than state.items — mirrors how
+// obstacle (gated by openForItem in state/state.ts), tracked in
+// state.smelters rather than state.items — mirrors how
 // systems/farming.ts tracks a planted seed separately from the energy it
 // grows. While a job is running the player can pick the original item
 // straight back up (see doPickup in player-actions.ts), canceling it. Once

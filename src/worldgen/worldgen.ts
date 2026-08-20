@@ -369,3 +369,33 @@ export function buildVegetationRing(
   }
   return { bushes, trees };
 }
+
+// scatters cacti independently across every open tile of the map, unlike
+// buildVegetationRing above which only places vegetation in a band near the
+// oasis — cactus fruit is meant to be found by exploring the open desert,
+// not clustered around the one water source (see CACTUS_SPAWN_CHANCE's
+// comment in constants.ts). `exclude` is every cell already claimed by
+// something else (stone, the oasis, bushes/trees), so a cactus never tries
+// to grow on top of one of those; `safetyR` keeps them off the player's
+// immediate spawn point, same idea as buildStones' own SPAWN_SAFETY_R.
+export function buildCactusScatter(
+  rng: Rng,
+  mapW: number,
+  mapH: number,
+  exclude: Set<string>,
+  spawnX: number,
+  spawnY: number,
+  safetyR: number,
+  chance: number,
+): Set<string> {
+  const cacti = new Set<string>();
+  for (let y = 0; y < mapH; y++) {
+    for (let x = 0; x < mapW; x++) {
+      const key = x + ',' + y;
+      if (exclude.has(key)) continue;
+      if (Math.abs(x - spawnX) + Math.abs(y - spawnY) <= safetyR) continue;
+      if (rng() < chance) cacti.add(key);
+    }
+  }
+  return cacti;
+}

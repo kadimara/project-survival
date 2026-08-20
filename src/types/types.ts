@@ -12,12 +12,22 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
 // OBSTACLE_DEFS), and items (loose, drawn per-frame, sit on top of an
 // obstacle that opts in via allowItem — see ITEM_DEFS). Floor and obstacles
 // are independent maps, so an obstacle can sit on top of a floor tile
-// without the two ever conflicting.
-export type FloorType = 'dirt';
+// without the two ever conflicting. 'soil' is a floor type rather than an
+// obstacle on purpose — it's plantable ground, not a solid thing to walk
+// around, so it doesn't need `solid`/occupant-combine semantics.
+export type FloorType = 'dirt' | 'soil';
 export type ObstacleType =
-  'stone' | 'soil' | 'furnace' | 'wood' | 'fiber' | 'tree';
+  'stone' | 'furnace' | 'wood' | 'berryBush' | 'tree' | 'cactus';
 export type ItemType =
-  'energy' | 'energySeed' | 'ingot' | 'ore' | 'sword' | 'bow';
+  | 'energy'
+  | 'energySeed'
+  | 'ingot'
+  | 'ore'
+  | 'sword'
+  | 'bow'
+  | 'cactusFruit'
+  | 'berry'
+  | 'poop';
 export type CarryType = ObstacleType | ItemType | FloorType;
 
 export interface Point {
@@ -31,11 +41,21 @@ export interface Item extends Point {
   type: ItemType;
 }
 
-// a seed planted on soil, tracked separately from state.items so an
-// energySeed and the energy it periodically spawns can occupy the same
-// cell at once (see systems/farming.ts). readyAt is a tick count
-// (state.tick), not a millisecond timestamp.
+// an energySeed planted on soil, tracked separately from state.items so a
+// seed and the energy it periodically spawns can occupy the same cell at
+// once (see systems/farming.ts). readyAt is a tick count (state.tick), not
+// a millisecond timestamp.
 export interface PlantedSeed extends Point {
+  readyAt: number;
+}
+
+// a berryBush obstacle (see OBSTACLE_DEFS in constants.ts) — kept in sync
+// by setObstacle/buildWorldLayers in state/state.ts, same pattern as
+// Tree/Cactus below, except a bush is never attacked/destroyed, just
+// harvested. readyAt gates when it next produces a berry, but only while
+// standing on soil floor (see updateBerryBushes in systems/farming.ts) — a
+// bush moved off soil just sits idle rather than losing its progress.
+export interface BerryBush extends Point {
   readyAt: number;
 }
 
@@ -87,7 +107,7 @@ export interface Player extends Actor {
   // needs to work even while chasing or mid-attack, not get starved by them.
   pendingUse: boolean;
   attacked: boolean;
-  attackTarget: Enemy | Tree | null;
+  attackTarget: Enemy | Tree | Cactus | null;
   // tick count (state.tick) at which the next attack becomes allowed, same
   // readyAt-style pattern as Seed/SmeltJob above — gated against state.tick
   // rather than a ms timestamp so attack cadence stays exact regardless of
@@ -146,6 +166,22 @@ export interface Tree {
   flashUntil: number;
 }
 
+// a choppable cactus — same "stationary, no AI, only the fields shared
+// combat code needs" shape as Tree above, but a single tile (no separate
+// canopy visual) that's cleared entirely and drops a cactusFruit item on
+// death instead of swapping to a leftover obstacle (see destroyCactus in
+// systems/combat.ts) — the reward is the fruit, not the plant itself.
+export interface Cactus {
+  kind: 'cactus';
+  tileX: number;
+  tileY: number;
+  px: number;
+  py: number;
+  hp: number;
+  maxHp: number;
+  flashUntil: number;
+}
+
 // a darkened patch left on a tile the player has walked off of (see
 // leaveFootprint in state/state.ts and its render.ts draw loop) — purely
 // cosmetic, so it's not persisted (see state/persistence.ts) and rebuilt
@@ -171,7 +207,7 @@ export interface FloatingText {
 // render.ts); they don't track the target's later movement, matching the
 // same "hit already decided" convention.
 export interface Projectile {
-  target: Enemy | Tree;
+  target: Enemy | Tree | Cactus;
   damage: number;
   fromPx: number;
   fromPy: number;
@@ -216,8 +252,8 @@ export interface GameState {
   refs: GameRefs;
 
   // count of simulation ticks elapsed (see game.ts's simulateTick) — the
-  // clock that seeds/smelters readyAt (and nothing else) is measured
-  // against, instead of a wall-clock timestamp
+  // clock that seeds/smelters/berryBushes readyAt (and nothing else) is
+  // measured against, instead of a wall-clock timestamp
   tick: number;
 
   seed: number;
@@ -238,6 +274,11 @@ export interface GameState {
   // apply damage to one, without scanning the whole state.obstacles map
   // every frame
   trees: Map<string, Tree>;
+  cacti: Map<string, Cactus>;
+  // every berryBush obstacle, same kept-in-sync-by-setObstacle pattern as
+  // furnaces/trees/cacti above — lets updateBerryBushes (systems/farming.ts)
+  // grow berries without scanning the whole state.obstacles map every tick
+  berryBushes: Map<string, BerryBush>;
   enemies: Enemy[];
   player: Player;
   floatingTexts: FloatingText[];

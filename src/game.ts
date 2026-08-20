@@ -42,7 +42,7 @@ import {
 import { heldDir, setupPlayerInput } from './input/player-input';
 import { updateEnemy } from './systems/ai';
 import { updateProjectiles } from './systems/combat';
-import { updateSeeds } from './systems/farming';
+import { updateBerryBushes, updateSeeds } from './systems/farming';
 import { updateSmelters } from './systems/smelting';
 import { createTickClock, drainTicks } from './systems/ticker';
 import {
@@ -176,6 +176,16 @@ export function initColonyGame(): void {
     const treeHit = state.trees.get(x + ',' + y);
     if (treeHit) {
       player.attackTarget = treeHit;
+      player.pendingAction = null;
+      player.path = [];
+      return;
+    }
+
+    // same precedence as a tree hit above — a cactus always means destroy
+    // it (for the cactusFruit it drops), even over placing a held item on it
+    const cactusHit = state.cacti.get(x + ',' + y);
+    if (cactusHit) {
+      player.attackTarget = cactusHit;
       player.pendingAction = null;
       player.path = [];
       return;
@@ -354,6 +364,7 @@ export function initColonyGame(): void {
     }
 
     updateSeeds(state);
+    updateBerryBushes(state);
     updateSmelters(state);
     updateProjectiles(state, hud, now);
     for (const enemy of state.enemies)

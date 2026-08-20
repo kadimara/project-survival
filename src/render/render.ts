@@ -106,6 +106,23 @@ export function render(state: GameState, now: number): void {
     drawFurnaceGlow(ctx, TILE, sx, sy, now, furnacePhase(furnace.x, furnace.y));
   }
 
+  // cactus body/fruit are baked into the ground atlas above (see
+  // drawCactusBody in rendering.ts) since, unlike a tree's canopy, a cactus
+  // never extends past its own tile — no y-sorting against the player is
+  // needed, so only the on-hit flash and hp bar are redrawn per frame here
+  for (const cactus of state.cacti.values()) {
+    const sx = cactus.px - camX,
+      sy = cactus.py - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    if (cactus.flashUntil && now < cactus.flashUntil) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
+    }
+    if (cactus.hp < cactus.maxHp)
+      drawHpBar(ctx, TILE, sx, sy, cactus.hp / cactus.maxHp);
+  }
+
   // player's trail: fades out over FOOTPRINT_FADE_MS (sand) or the shorter
   // WAKE_FADE_MS (water — see below). Expired marks are pruned in this same
   // pass (iterating backwards so splice is safe), same convention as the

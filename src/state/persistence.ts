@@ -18,6 +18,8 @@
 // were renamed — renaming a persisted field would silently drop that data
 // out of every save already sitting in a user's localStorage.
 import type {
+  BerryBush,
+  Cactus,
   Dir,
   FloorType,
   GameRefs,
@@ -34,33 +36,36 @@ import { MAP_H, MAP_W, PLAYER_MAX_HP, TICK_MS } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { buildGroundAtlas, buildWorldMapAtlas } from '../render/ground-atlas';
 import { makeEnemy } from '../entities/entities';
-import { makeTreeAt, paintOasis } from './state';
+import { makeBerryBushAt, makeCactusAt, makeTreeAt, paintOasis } from './state';
 
 const SAVE_KEY = 'project-survival-save-v1';
 
 // grid-cell byte id, 0 = no obstacle (open ground). Room for 255 obstacle
-// types before this needs to grow past one byte per cell. id 5 is retired —
-// it used to be the old (dead, never actually placed) 'dirt' ObstacleType,
-// now reclaimed as the separate floor-layer FloorType below — and is
-// deliberately left unassigned rather than reused, so there's no ambiguity
-// decoding an old save.
+// types before this needs to grow past one byte per cell. ids 2 and 5 are
+// retired — 2 used to be the 'soil' ObstacleType, now a FloorType (see
+// FLOOR_TO_ID below); 5 used to be the old (dead, never actually placed)
+// 'dirt' ObstacleType, also reclaimed as a FloorType. Both are deliberately
+// left unassigned rather than reused, so there's no ambiguity decoding an
+// old save. 6 keeps its old id across the fiber -> berryBush rename, same
+// obstacle, new name.
 const OBSTACLE_TO_ID: Record<ObstacleType, number> = {
   stone: 1,
-  soil: 2,
   furnace: 3,
   wood: 4,
-  fiber: 6,
+  berryBush: 6,
   tree: 7,
+  cactus: 8,
 };
 const ID_TO_OBSTACLE: (ObstacleType | undefined)[] = [
   undefined,
   'stone',
-  'soil',
+  undefined,
   'furnace',
   'wood',
   undefined,
-  'fiber',
+  'berryBush',
   'tree',
+  'cactus',
 ];
 
 function encodeObstacleGrid(obstacles: Map<string, ObstacleType>): string {
@@ -72,15 +77,22 @@ function encodeObstacleGrid(obstacles: Map<string, ObstacleType>): string {
   return bytesToBase64(bytes);
 }
 
-function decodeObstacleGrid(b64: string): {
+function decodeObstacleGrid(
+  b64: string,
+  tick: number,
+): {
   obstacles: Map<string, ObstacleType>;
   furnaces: Map<string, { x: number; y: number }>;
   trees: Map<string, Tree>;
+  cacti: Map<string, Cactus>;
+  berryBushes: Map<string, BerryBush>;
 } {
   const bytes = base64ToBytes(b64);
   const obstacles = new Map<string, ObstacleType>();
   const furnaces = new Map<string, { x: number; y: number }>();
   const trees = new Map<string, Tree>();
+  const cacti = new Map<string, Cactus>();
+  const berryBushes = new Map<string, BerryBush>();
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const type = ID_TO_OBSTACLE[bytes[y * MAP_W + x]];
@@ -88,22 +100,30 @@ function decodeObstacleGrid(b64: string): {
       const key = x + ',' + y;
       obstacles.set(key, type);
       if (type === 'furnace') furnaces.set(key, { x, y });
-      // a tree's hp isn't persisted — makeTreeAt always starts at full hp,
-      // so a half-chopped tree just resets on reload. Low-stakes (trees are
-      // rare, hp isn't precious state) and simpler than threading a second
-      // parallel hp grid through the save format for this first pass.
+      // a tree/cactus's hp isn't persisted — makeTreeAt/makeCactusAt always
+      // start at full hp, so a half-chopped one just resets on reload.
+      // Low-stakes (both are rare, hp isn't precious state) and simpler
+      // than threading a second parallel hp grid through the save format
+      // for this first pass. A berryBush's grow timer isn't persisted
+      // either, but unlike hp it does need a starting point — restarted
+      // from the loaded tick (see makeBerryBushAt), same full wait as any
+      // other fresh placement, rather than a free instant berry.
       if (type === 'tree') trees.set(key, makeTreeAt(x, y));
+      if (type === 'cactus') cacti.set(key, makeCactusAt(x, y));
+      if (type === 'berryBush')
+        berryBushes.set(key, makeBerryBushAt(x, y, tick));
     }
   }
-  return { obstacles, furnaces, trees };
+  return { obstacles, furnaces, trees, cacti, berryBushes };
 }
 
 // same dense one-byte-per-cell approach as the obstacle grid above, its own
 // id space starting fresh at 1 (independent of OBSTACLE_TO_ID's ids)
 const FLOOR_TO_ID: Record<FloorType, number> = {
   dirt: 1,
+  soil: 2,
 };
-const ID_TO_FLOOR: (FloorType | undefined)[] = [undefined, 'dirt'];
+const ID_TO_FLOOR: (FloorType | undefined)[] = [undefined, 'dirt', 'soil'];
 
 function encodeFloorGrid(floor: Map<string, FloorType>): string {
   const bytes = new Uint8Array(MAP_W * MAP_H);
@@ -162,6 +182,9 @@ const ITEM_TO_ID: Record<ItemType, number> = {
   ingot: 4,
   sword: 5,
   bow: 6,
+  cactusFruit: 7,
+  berry: 8,
+  poop: 9,
 };
 const ID_TO_ITEM: (ItemType | undefined)[] = [
   undefined,
@@ -171,6 +194,9 @@ const ID_TO_ITEM: (ItemType | undefined)[] = [
   'ingot',
   'sword',
   'bow',
+  'cactusFruit',
+  'berry',
+  'poop',
 ];
 
 function encodeItems(items: Map<string, Item>): number[] {
@@ -297,7 +323,10 @@ export function loadGame(refs: GameRefs): GameState | null {
 
   const map = buildMap(MAP_W, MAP_H);
   paintOasis(map, data.seed);
-  const { obstacles, furnaces, trees } = decodeObstacleGrid(data.tilesGrid);
+  const { obstacles, furnaces, trees, cacti, berryBushes } = decodeObstacleGrid(
+    data.tilesGrid,
+    data.tick ?? 0,
+  );
   const floor = decodeFloorGrid(data.floorGrid);
 
   const sp = data.player;
@@ -353,6 +382,8 @@ export function loadGame(refs: GameRefs): GameState | null {
     smelters: new Map(data.smelters),
     furnaces,
     trees,
+    cacti,
+    berryBushes,
     enemies,
     player,
     floatingTexts: [],
