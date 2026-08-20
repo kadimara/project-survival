@@ -13,7 +13,8 @@
 // map area same as the reasoning above.
 import { MAP_H, MAP_W, TILE, TILE_DEFS, WORLD_TILE } from '../constants';
 import type { GameRefs, TileType } from '../types/types';
-import { drawObstacle, drawTile } from './rendering';
+import { COLORS, drawObstacle, drawTile } from './rendering';
+import { DIRT } from '../worldgen/worldgen';
 
 export function patchGroundAtlasTile(
   refs: GameRefs,
@@ -44,34 +45,42 @@ export function buildGroundAtlas(
   }
 }
 
-// open ground (no tile entry) matches renderWorldMap's previous per-frame
-// fillStyle for an untyped cell
-const WORLD_MAP_OPEN_COLOR = '#4a331d';
-
 export function patchWorldMapAtlasTile(
   refs: GameRefs,
+  map: number[][],
   x: number,
   y: number,
   type: TileType | undefined,
 ): void {
-  refs.worldAtlasCtx.fillStyle = type
-    ? TILE_DEFS[type].colors.primary
-    : WORLD_MAP_OPEN_COLOR;
-  refs.worldAtlasCtx.fillRect(
-    x * WORLD_TILE,
-    y * WORLD_TILE,
-    WORLD_TILE,
-    WORLD_TILE,
-  );
+  const ctx = refs.worldAtlasCtx;
+  const px = x * WORLD_TILE,
+    py = y * WORLD_TILE;
+  if (type) {
+    ctx.fillStyle = TILE_DEFS[type].colors.primary;
+    ctx.fillRect(px, py, WORLD_TILE, WORLD_TILE);
+    return;
+  }
+  // sand base first, same as drawTile — a translucent background variant
+  // (e.g. OASIS, see rendering.ts) blends with it instead of covering it
+  // outright, so the minimap shows the same "shallow water over sand" look
+  // as the main canvas rather than a flat opaque color
+  ctx.fillStyle = COLORS[DIRT][0];
+  ctx.fillRect(px, py, WORLD_TILE, WORLD_TILE);
+  const bg = map[y][x];
+  if (bg !== DIRT) {
+    ctx.fillStyle = COLORS[bg]?.[0] ?? COLORS[DIRT][0];
+    ctx.fillRect(px, py, WORLD_TILE, WORLD_TILE);
+  }
 }
 
 export function buildWorldMapAtlas(
   refs: GameRefs,
+  map: number[][],
   tiles: Map<string, TileType>,
 ): void {
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
-      patchWorldMapAtlasTile(refs, x, y, tiles.get(x + ',' + y));
+      patchWorldMapAtlasTile(refs, map, x, y, tiles.get(x + ',' + y));
     }
   }
 }

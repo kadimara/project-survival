@@ -4,6 +4,8 @@
 import type { GameState, Point } from '../types/types';
 import {
   carryColor,
+  FOOTPRINT_FADE_MS,
+  FOOTPRINT_MAX_ALPHA,
   ITEM_DEFS,
   MAP_H,
   MAP_W,
@@ -12,11 +14,14 @@ import {
   PLAYER_INSET,
   TILE,
   TILE_DEFS,
+  WAKE_FADE_MS,
+  WAKE_MAX_ALPHA,
   WORLD_TILE,
 } from '../constants';
 import { getClampedCamX, getClampedCamY } from './camera';
 import { tileAt } from '../state/state';
 import {
+  COLORS,
   drawBowIcon,
   drawFurnaceGlow,
   drawHpBar,
@@ -24,8 +29,11 @@ import {
   drawProjectile,
   drawScatteredDots,
   drawSquareEntity,
+  drawStepDarken,
   drawSwordIcon,
+  drawWake,
 } from './rendering';
+import { DIRT, OASIS } from '../worldgen/worldgen';
 
 // per-tile pseudo-random phase so several furnaces don't flicker in lockstep
 function furnacePhase(x: number, y: number): number {
@@ -34,7 +42,11 @@ function furnacePhase(x: number, y: number): number {
 
 export function renderWorldMap(state: GameState): void {
   const { worldCanvas, worldCtx, worldAtlas } = state.refs;
-  worldCtx.fillStyle = '#402c19';
+  // same sand color as the main canvas background (COLORS[DIRT] in
+  // rendering.ts) — this fill only shows through at the atlas's own edges,
+  // since patchWorldMapAtlasTile already paints every open-ground cell the
+  // same color
+  worldCtx.fillStyle = COLORS[DIRT][0];
   worldCtx.fillRect(0, 0, worldCanvas.width, worldCanvas.height);
   worldCtx.drawImage(worldAtlas, 0, 0);
   for (const item of state.groundItems.values()) {
@@ -90,6 +102,34 @@ export function render(state: GameState, now: number): void {
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
     drawFurnaceGlow(ctx, TILE, sx, sy, now, furnacePhase(furnace.x, furnace.y));
+  }
+
+  // player's trail: fades out over FOOTPRINT_FADE_MS (sand) or the shorter
+  // WAKE_FADE_MS (water — see below). Expired marks are pruned in this same
+  // pass (iterating backwards so splice is safe), same convention as the
+  // floatingTexts cleanup further down. A mark left on the oasis's water
+  // (state.map, not state.tiles — see OASIS in worldgen.ts) draws as a pale
+  // wake instead of a sand darkening, so walking through the water leaves a
+  // trailing stream behind the player.
+  for (let i = state.footprints.length - 1; i >= 0; i--) {
+    const fp = state.footprints[i];
+    const isWater = state.map[fp.y]?.[fp.x] === OASIS;
+    const fadeMs = isWater ? WAKE_FADE_MS : FOOTPRINT_FADE_MS;
+    const age = now - fp.born;
+    if (age > fadeMs) {
+      state.footprints.splice(i, 1);
+      continue;
+    }
+    const sx = fp.x * TILE - camX,
+      sy = fp.y * TILE - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    const alpha = 1 - age / fadeMs;
+    if (isWater) {
+      drawWake(ctx, TILE, sx, sy, WAKE_MAX_ALPHA * alpha);
+    } else {
+      drawStepDarken(ctx, TILE, sx, sy, FOOTPRINT_MAX_ALPHA * alpha);
+    }
   }
 
   for (const step of player.path) {

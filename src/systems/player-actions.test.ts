@@ -13,6 +13,7 @@ import { walkable } from '../state/state';
 import {
   attemptPlayerAttack,
   tryPlaceAt,
+  tryPlayerStep,
   trySelectPickup,
 } from './player-actions';
 
@@ -131,6 +132,48 @@ describe('attemptPlayerAttack', () => {
     attemptPlayerAttack(state, hud, 1000);
 
     expect(state.player.hp).toBe(hpBefore - PLAYER_ATK_HP_COST);
+  });
+});
+
+describe('tryPlayerStep', () => {
+  it('leaves a footprint on the tile being left, not the one walked onto', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const { tileX, tileY } = state.player;
+    const walkableFn = (x: number, y: number) => walkable(state, x, y);
+
+    const moved = tryPlayerStep(
+      state,
+      hud,
+      tileX + 1,
+      tileY,
+      'right',
+      walkableFn,
+    );
+
+    expect(moved).toBe(true);
+    expect(state.footprints).toHaveLength(1);
+    expect(state.footprints[0]).toMatchObject({ x: tileX, y: tileY });
+  });
+
+  it('does not move or leave a footprint when the destination is blocked', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const { tileX, tileY } = state.player;
+    state.tiles.set(tileX + 1 + ',' + tileY, 'stone');
+    const walkableFn = (x: number, y: number) => walkable(state, x, y);
+
+    const moved = tryPlayerStep(
+      state,
+      hud,
+      tileX + 1,
+      tileY,
+      'right',
+      walkableFn,
+    );
+
+    expect(moved).toBe(false);
+    expect(state.footprints).toHaveLength(0);
   });
 });
 

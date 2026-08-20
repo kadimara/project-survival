@@ -2,12 +2,19 @@
 // HP bars. Each function only takes the canvas context plus the primitive
 // values it needs to draw one thing, so none of it depends on the game's
 // entity/state model.
-import { DIRT } from '../worldgen/worldgen';
+import { DIRT, OASIS } from '../worldgen/worldgen';
 import { TILE_DEFS } from '../constants';
 import type { ItemType, TileType } from '../types/types';
 
+// desert sand checkerboard — subtle warm-tone banding rather than a flat
+// fill, same "two-tone alternating tile" convention drawTile already used
+// for the old cave-dirt palette. OASIS is translucent (alpha < 1) on
+// purpose — drawTile always paints the sand pair underneath first, so the
+// water blends with it rather than fully covering it, like shallow water
+// over sand.
 export const COLORS: Record<number, [string, string]> = {
-  [DIRT]: ['#393939', '#363636'],
+  [DIRT]: ['#b9ac87', '#b2a47c'],
+  [OASIS]: ['rgba(58,124,165,0.55)', 'rgba(47,102,144,0.55)'],
 };
 
 export function drawTile(
@@ -17,11 +24,17 @@ export function drawTile(
   sx: number,
   sy: number,
 ): void {
-  const pair = COLORS[type] || COLORS[DIRT];
   const tx = sx / TILE,
     ty = sy / TILE;
-  ctx.fillStyle = (tx + ty) % 2 === 0 ? pair[0] : pair[1];
+  const parity = (tx + ty) % 2 === 0 ? 0 : 1;
+  const sand = COLORS[DIRT];
+  ctx.fillStyle = sand[parity];
   ctx.fillRect(sx, sy, TILE, TILE);
+  if (type !== DIRT) {
+    const pair = COLORS[type] || sand;
+    ctx.fillStyle = pair[parity];
+    ctx.fillRect(sx, sy, TILE, TILE);
+  }
 }
 
 export function drawObstacle(
@@ -39,7 +52,24 @@ export function drawObstacle(
   ctx.fillRect(sx + m1, sy + m1, TILE - m1 * 2, TILE - m1 * 2);
   ctx.fillStyle = primary;
   ctx.fillRect(sx + m2, sy + m2, TILE - m2 * 2, TILE - m2 * 2);
+  if (type === 'soil') {
+    ctx.fillStyle = SOIL_FLECK_COLOR;
+    for (const [ox, oy] of SOIL_FLECK_OFFSETS) {
+      ctx.fillRect(sx + ox, sy + oy, 1, 1);
+    }
+  }
 }
+
+// a few pebble flecks baked into soil so it reads apart from the
+// visually-identical dirt tile (see TILE_DEFS.dirt in constants.ts) — same
+// fixed-offset-table idea as SCATTERED_DOT_OFFSETS/ORE_DOT_OFFSETS below
+const SOIL_FLECK_OFFSETS: [number, number][] = [
+  [3, 4],
+  [11, 3],
+  [6, 9],
+  [12, 11],
+];
+const SOIL_FLECK_COLOR = '#8a6a44';
 
 // three fixed dots scattered around a tile, avoiding the dead center where
 // a regular item's centered square would render — used for a planted seed
@@ -239,6 +269,43 @@ export function drawItemIcon(
   ctx.fillRect(ix - 1, iy - 1, size + 2, size + 2);
   ctx.fillStyle = colors.primary;
   ctx.fillRect(ix, iy, size, size);
+}
+
+// one mark of the player's sand trail (see leaveFootprint in state/
+// state.ts) — a plain darkening overlay inset within the tile (not covering
+// it edge-to-edge), rather than a footprint-shaped print. `alpha` carries
+// the fade (render.ts computes it from the mark's age).
+export function drawStepDarken(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  alpha: number,
+): void {
+  const inset = Math.round(TILE * 0.2);
+  const size = TILE - inset * 2;
+  ctx.fillStyle = `rgba(20,20,20,${alpha})`;
+  ctx.fillRect(sx + inset, sy + inset, size, size);
+}
+
+// the water-tile counterpart to drawStepDarken above — same footprint mark
+// (render.ts picks one or the other per mark, based on whether the tile the
+// player stepped off of is OASIS or plain ground, see leaveFootprint in
+// state/state.ts), but a light foam-colored fill instead of a dark inset —
+// edge-to-edge (no inset) so consecutive marks along the player's path
+// touch and read as one continuous stream rather than separate dots.
+// `alpha` carries the fade (render.ts computes it from the mark's age,
+// same as drawStepDarken's, but on its own shorter timer — see
+// WAKE_FADE_MS in constants.ts).
+export function drawWake(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  alpha: number,
+): void {
+  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+  ctx.fillRect(sx, sy, TILE, TILE);
 }
 
 export function drawSquareEntity(

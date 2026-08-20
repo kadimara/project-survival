@@ -10,7 +10,7 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
 // tiles are the grid layer: solid, atlas-baked (see TILE_DEFS in
 // constants.ts). Items are the ground layer: loose, drawn per-frame, sit on
 // top of terrain rather than being part of the grid (see ITEM_DEFS).
-export type TileType = 'stone' | 'soil' | 'furnace' | 'wood';
+export type TileType = 'stone' | 'soil' | 'furnace' | 'wood' | 'dirt';
 export type ItemType =
   'energy' | 'energySeed' | 'ingot' | 'ore' | 'sword' | 'bow';
 export type CarryType = TileType | ItemType;
@@ -88,6 +88,14 @@ export interface Player extends Actor {
   // rather than a ms timestamp so attack cadence stays exact regardless of
   // frame timing (see attemptPlayerAttack in systems/player-actions.ts)
   nextAttackAt: number;
+  // tick count (state.tick) at which the next step becomes allowed — same
+  // readyAt-style gating as nextAttackAt above, set by tryPlayerStep
+  // (systems/player-actions.ts) to state.tick + 1 normally, or further out
+  // while wading through the oasis's water (see PLAYER_WATER_MOVE_TICKS in
+  // constants.ts), so movement through water takes proportionally longer in
+  // real time without changing the fixed-tick simulation itself. Checked in
+  // game.ts's simulateTick before a step is issued.
+  nextMoveAt: number;
   hp: number;
   maxHp: number;
   flashUntil: number;
@@ -108,6 +116,14 @@ export interface Enemy extends Actor {
   // ignores hp loss (see systems/ai.ts's updateEnemy and entities.ts's
   // makeDummyEnemy)
   stationary: boolean;
+}
+
+// a darkened patch left on a tile the player has walked off of (see
+// leaveFootprint in state/state.ts and its render.ts draw loop) — purely
+// cosmetic, so it's not persisted (see state/persistence.ts) and rebuilt
+// empty on load, same as floatingTexts/projectiles below.
+export interface Footprint extends Point {
+  born: number;
 }
 
 export interface FloatingText {
@@ -191,6 +207,7 @@ export interface GameState {
   player: Player;
   floatingTexts: FloatingText[];
   projectiles: Projectile[];
+  footprints: Footprint[];
 
   zoomIndex: number;
   VP_W: number;

@@ -27,18 +27,23 @@ export const WORLD_TILE = 4;
 // ---- boulder-structure resources: buildStones' noise pass carves the
 // wasteland into separated solid-stone "structures" (see worldgen.ts's
 // CAVE_PRESET comment). Every structure at or above MIN_STRUCTURE_SIZE tiles
-// gets a full scavengeable resource kit embedded in it (see buildWorldTiles
-// in state/state.ts); anything smaller stays plain undecorated stone.
-// First-pass balance numbers. ----
+// gets ore rolled independently on each of its interior cells (worldgen.ts's
+// interiorCells, so it never sits at the structure's edge) at ORE_SPAWN_CHANCE
+// (see buildWorldTiles in state/state.ts); anything smaller stays plain
+// undecorated stone. First-pass balance numbers. ----
 export const MIN_STRUCTURE_SIZE = 15; // stone tiles; below this, no resources
-export const STRUCTURE_ORE_COUNT = 3; // one sword's ingots + 1 spare
-export const STRUCTURE_WOOD_COUNT = 1; // one bow
-export const STRUCTURE_SOIL_COUNT = 1; // one farming plot
-export const STRUCTURE_ENERGY_SEED_DENSITY = 1 / 12; // ~1 food per 12 stone tiles
-export const STRUCTURE_MIN_ENERGY_SEED = 2; // even a small qualifying structure gets some food
+export const ORE_SPAWN_CHANCE = 0.05; // per interior stone tile
 // salts the resource-placement RNG so it's independent of both the terrain
 // noise's own seed usage and gameplay's state.rng consumption order
 export const RESOURCE_PLACEMENT_SALT = 0x9e3779b9;
+
+// ---- oasis: a single small circular patch of background ground painted a
+// different color, placed at a fixed distance from spawn in a random
+// (seed-derived) direction — purely cosmetic, see OASIS in worldgen.ts and
+// paintOasis in state/state.ts ----
+export const OASIS_DISTANCE_TILES = 20;
+export const OASIS_RADIUS = 4; // ~49-tile circular patch
+export const OASIS_PLACEMENT_SALT = 0x1b873593; // distinct from RESOURCE_PLACEMENT_SALT
 
 // ---- tile defs: the grid layer (solid, atlas-baked). pickable is checked
 // by doPickup — every current tile is pickable, but the flag exists so a
@@ -62,6 +67,15 @@ export const TILE_DEFS: Record<
     colors: { primary: '#8a8478', secondary: '#5e594e' },
   },
   soil: {
+    solid: true,
+    pickable: true,
+    allowGroundItem: true,
+    colors: { primary: '#6b4a30', secondary: '#43301f' },
+  },
+  // same colors as soil on purpose — visually identical except for the
+  // pebble-fleck texture drawObstacle bakes onto soil (see rendering.ts),
+  // which is the only thing that tells the two apart
+  dirt: {
     solid: true,
     pickable: true,
     allowGroundItem: true,
@@ -169,6 +183,12 @@ export const PLAYER_ATK_DAMAGE = 3;
 // regardless of frame timing/hitches instead of drifting like a
 // performance.now() comparison would
 export const PLAYER_ATK_COOLDOWN_TICKS = 4;
+// ticks a step onto the oasis's water takes before the next step is
+// allowed, vs. the normal 1 tick per step everywhere else — see
+// Player.nextMoveAt (types.ts) and tryPlayerStep (systems/player-actions.ts).
+// Twice the normal pace, so wading through the water takes twice as long in
+// real time without changing the fixed-tick simulation rate itself.
+export const PLAYER_WATER_MOVE_TICKS = 2;
 
 // a weapon is "equipped" simply by being held (see attemptPlayerAttack in
 // systems/player-actions.ts) — no separate equip slot, so wielding one
@@ -194,6 +214,24 @@ export function weaponRange(held: CarryType | null): number {
   const weapon = held ? WEAPON_DEFS[held as ItemType] : undefined;
   return weapon?.range ?? 1;
 }
+// ---- sand trail: the tile the player steps off of gets a dark overlay (see
+// leaveFootprint in state/state.ts) that fades out over FOOTPRINT_FADE_MS
+// (render.ts). Recorded on the tile being left, not the one being walked
+// onto, so the mark never sits directly under the player. FOOTPRINT_MAX
+// bounds the backing array so a long walk doesn't grow it forever — oldest
+// marks are dropped first, same as they'd have faded out anyway. ----
+export const FOOTPRINT_FADE_MS = 3000;
+export const FOOTPRINT_MAX = 400;
+export const FOOTPRINT_MAX_ALPHA = 0.18;
+// same role as FOOTPRINT_MAX_ALPHA/FOOTPRINT_FADE_MS above, but for the
+// pale wake mark a footprint on water renders as instead (see drawWake in
+// rendering.ts). WAKE_MAX_ALPHA is higher than the sand darken since a
+// light mark needs more opacity to read clearly against the water;
+// WAKE_FADE_MS is shorter so the trailing stream reads as motion right
+// behind the player rather than lingering.
+export const WAKE_MAX_ALPHA = 0.35;
+export const WAKE_FADE_MS = 700;
+
 // hp spent per tile the player steps onto, however the step was triggered
 // (keyboard, click-to-move, or auto-pathing toward an attack target)
 export const PLAYER_MOVE_HP_COST = 1;

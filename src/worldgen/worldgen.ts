@@ -135,6 +135,10 @@ export const CAVE_PRESET = {
 
 // ground tile variant (aesthetic, not walkability)
 export const DIRT = 0;
+// a second background variant, painted into a small patch of state.map for
+// the one oasis (see paintOasis in state/state.ts) — purely cosmetic, like
+// DIRT above; nothing here makes it solid or diggable
+export const OASIS = 1;
 
 export function buildMap(mapW: number, mapH: number): number[][] {
   const map: number[][] = [];
@@ -229,22 +233,80 @@ export function findRegions(
   return regions;
 }
 
-// picks up to `count` distinct cells at random from `cells` (partial
-// Fisher-Yates via swap-and-pop) — used to reserve non-overlapping
-// placement tiles for resources within one island.
-export function pickDistinctCells(
-  cells: Cell[],
-  count: number,
+// cells of `structure` whose 4-directional neighbors are all also members
+// of `members` — i.e. cells that don't touch the structure's boundary.
+// Structures are maximal connected components (see findRegions above), so
+// checking a neighbor against the global `members` set is equivalent to
+// checking it against the structure's own cells: any neighboring member
+// cell is necessarily part of the same structure. Used by buildWorldTiles
+// in state/state.ts to keep resource placement away from the edge.
+export function interiorCells(structure: Cell[], members: Set<string>): Cell[] {
+  return structure.filter(({ x, y }) => {
+    return (
+      members.has(x + 1 + ',' + y) &&
+      members.has(x - 1 + ',' + y) &&
+      members.has(x + ',' + (y + 1)) &&
+      members.has(x + ',' + (y - 1))
+    );
+  });
+}
+
+// max wobble amplitude buildOasisPatch's two sine harmonics can add, as a
+// fraction of the base radius — kept small and well under 1, so the shape
+// reads as a circle with a bit of natural irregularity rather than a
+// lopsided blob, and the boundary always stays a positive distance out in
+// every direction (no pinched-off islands)
+const OASIS_WOBBLE = 0.12 + 0.08;
+
+// picks one irregular, pond-shaped patch of cells at a fixed distance from
+// (originX, originY), in a uniformly random direction — used for the single
+// oasis background patch (see paintOasis in state/state.ts). Distance is
+// fixed, not noise-driven, matching how a spring/water-table feature can
+// turn up anywhere in the wasteland rather than following a terrain
+// gradient. The outline itself isn't a perfect circle — two sine harmonics
+// at random phases wobble the radius per-angle, so it reads as a natural
+// pond rather than a drawn disc.
+export function buildOasisPatch(
   rng: Rng,
-): Cell[] {
-  const pool = cells.slice();
-  const n = Math.min(count, pool.length);
-  const picked: Cell[] = [];
-  for (let i = 0; i < n; i++) {
-    const idx = Math.floor(rng() * pool.length);
-    picked.push(pool[idx]);
-    pool[idx] = pool[pool.length - 1];
-    pool.pop();
+  mapW: number,
+  mapH: number,
+  originX: number,
+  originY: number,
+  distance: number,
+  radius: number,
+): Set<string> {
+  const angle = rng() * Math.PI * 2;
+  const maxR = radius * (1 + OASIS_WOBBLE);
+  const margin = Math.ceil(maxR) + 1;
+  const cx = Math.round(
+    Math.min(
+      mapW - 1 - margin,
+      Math.max(margin, originX + Math.cos(angle) * distance),
+    ),
+  );
+  const cy = Math.round(
+    Math.min(
+      mapH - 1 - margin,
+      Math.max(margin, originY + Math.sin(angle) * distance),
+    ),
+  );
+
+  const phase1 = rng() * Math.PI * 2;
+  const phase2 = rng() * Math.PI * 2;
+  const radiusAt = (theta: number): number =>
+    radius *
+    (1 +
+      0.12 * Math.sin(theta * 3 + phase1) +
+      0.08 * Math.sin(theta * 5 + phase2));
+
+  const cells = new Set<string>();
+  for (let y = cy - Math.ceil(maxR); y <= cy + Math.ceil(maxR); y++) {
+    for (let x = cx - Math.ceil(maxR); x <= cx + Math.ceil(maxR); x++) {
+      const dx = x - cx,
+        dy = y - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= radiusAt(Math.atan2(dy, dx))) cells.add(x + ',' + y);
+    }
   }
-  return picked;
+  return cells;
 }

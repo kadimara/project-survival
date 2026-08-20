@@ -35,6 +35,7 @@ import {
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { buildGroundAtlas, buildWorldMapAtlas } from '../render/ground-atlas';
 import { makeDummyEnemy, makeEnemy } from '../entities/entities';
+import { paintOasis } from './state';
 
 const SAVE_KEY = 'project-survival-save-v1';
 
@@ -45,6 +46,7 @@ const TILE_TO_ID: Record<TileType, number> = {
   soil: 2,
   furnace: 3,
   wood: 4,
+  dirt: 5,
 };
 const ID_TO_TILE: (TileType | undefined)[] = [
   undefined,
@@ -52,6 +54,7 @@ const ID_TO_TILE: (TileType | undefined)[] = [
   'soil',
   'furnace',
   'wood',
+  'dirt',
 ];
 
 function encodeTilesGrid(tiles: Map<string, TileType>): string {
@@ -244,6 +247,7 @@ export function loadGame(refs: GameRefs): GameState | null {
   }
 
   const map = buildMap(MAP_W, MAP_H);
+  paintOasis(map, data.seed);
   const { tiles, furnaces } = decodeTilesGrid(data.tilesGrid);
 
   const sp = data.player;
@@ -267,6 +271,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     attacked: false,
     attackTarget: null,
     nextAttackAt: 0,
+    nextMoveAt: 0,
     hp: sp.hp,
     maxHp: sp.maxHp ?? PLAYER_MAX_HP,
     flashUntil: 0,
@@ -301,6 +306,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     player,
     floatingTexts: [],
     projectiles: [],
+    footprints: [],
     zoomIndex: data.zoomIndex,
     VP_W: 0,
     VP_H: 0,
@@ -309,6 +315,6 @@ export function loadGame(refs: GameRefs): GameState | null {
   };
 
   buildGroundAtlas(refs, map, tiles);
-  buildWorldMapAtlas(refs, tiles);
+  buildWorldMapAtlas(refs, map, tiles);
   return state;
 }

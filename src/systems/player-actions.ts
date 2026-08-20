@@ -8,6 +8,7 @@ import {
   ENERGY_SEED_GROW_TICKS,
   PLAYER_ATK_COOLDOWN_TICKS,
   PLAYER_ATK_DAMAGE,
+  PLAYER_WATER_MOVE_TICKS,
   TICK_MS,
   TILE_DEFS,
   weaponRange,
@@ -15,6 +16,7 @@ import {
 } from '../constants';
 import {
   isEnemyAt,
+  leaveFootprint,
   occupantAt,
   openForGroundItem,
   setOccupant,
@@ -22,6 +24,7 @@ import {
   spawnFloatingText,
   terrainWalkable,
 } from '../state/state';
+import { OASIS } from '../worldgen/worldgen';
 import { startStep } from '../entities/entities';
 import {
   bfsToAdjacent,
@@ -53,9 +56,31 @@ export function tryPlayerStep(
 ): boolean {
   const { player } = state;
   if (!walkable(nx, ny)) return false;
-  player.moveDur = TICK_MS;
+  const enteringWater = state.map[ny]?.[nx] === OASIS;
+  // both the glide animation and the tick-gate below (nextMoveAt) use the
+  // same water-slowed duration, so the extra time reads as one smooth slow
+  // glide through the water rather than a normal-speed step followed by a
+  // stall (moveDur alone controls only the visual lerp — see
+  // updateActorAnimation in entities/entities.ts — so leaving it at TICK_MS
+  // while nextMoveAt held the player back for longer was what produced the
+  // stutter this replaces)
+  player.moveDur = TICK_MS * (enteringWater ? PLAYER_WATER_MOVE_TICKS : 1);
+  // recorded before startStep overwrites tileX/tileY, so the mark lands on
+  // the tile being left rather than the one being walked onto (never
+  // directly under the player). On water this same mark renders as a wake
+  // instead of a sand darkening (see render.ts), so walking through the
+  // oasis leaves a trailing stream of marks behind the player rather than
+  // under or ahead of them.
+  leaveFootprint(state, player.tileX, player.tileY);
   startStep(player, nx, ny, dir);
   spendMoveHp(state, hud);
+  // gates when game.ts's simulateTick is allowed to issue the player's next
+  // step (see Player.nextMoveAt in types.ts) — stepping onto water takes
+  // PLAYER_WATER_MOVE_TICKS instead of the normal 1, so wading through the
+  // oasis takes twice as long in real time without changing the underlying
+  // tick rate
+  player.nextMoveAt =
+    state.tick + (enteringWater ? PLAYER_WATER_MOVE_TICKS : 1);
   return true;
 }
 

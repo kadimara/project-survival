@@ -14,29 +14,31 @@ import type {
   TileType,
 } from '../types/types';
 import {
+  FOOTPRINT_MAX,
   INITIAL_SEED,
   MAP_H,
   MAP_W,
   MIN_STRUCTURE_SIZE,
+  OASIS_DISTANCE_TILES,
+  OASIS_PLACEMENT_SALT,
+  OASIS_RADIUS,
+  ORE_SPAWN_CHANCE,
   PLAYER_MAX_HP,
   RESOURCE_PLACEMENT_SALT,
   SPAWN_X,
   SPAWN_Y,
-  STRUCTURE_ENERGY_SEED_DENSITY,
-  STRUCTURE_MIN_ENERGY_SEED,
-  STRUCTURE_ORE_COUNT,
-  STRUCTURE_SOIL_COUNT,
-  STRUCTURE_WOOD_COUNT,
   TICK_MS,
   TILE,
   TILE_DEFS,
 } from '../constants';
 import {
   buildMap,
+  buildOasisPatch,
   buildStones,
   findRegions,
+  interiorCells,
   mulberry32,
-  pickDistinctCells,
+  OASIS,
 } from '../worldgen/worldgen';
 import {
   buildGroundAtlas,
@@ -75,7 +77,7 @@ export function setTile(
   if (type === 'furnace') state.furnaces.set(key, { x, y });
   else state.furnaces.delete(key);
   patchGroundAtlasTile(state.refs, state.map, x, y, state.tiles.get(key));
-  patchWorldMapAtlasTile(state.refs, x, y, state.tiles.get(key));
+  patchWorldMapAtlasTile(state.refs, state.map, x, y, state.tiles.get(key));
 }
 
 // writes `type` as the occupant at (x,y), first clearing whichever existing
@@ -238,29 +240,60 @@ export function placeGroundItemNear(
   return true;
 }
 
+// paints the one oasis patch into `map`'s background layer and returns the
+// cells it touched — callers that also build state.tiles (buildWorldTiles
+// below) use the returned set to keep stone from generating underneath it;
+// loadGame (persistence.ts) only needs the paint side effect, since the
+// saved tiles already reflect a world that had the oasis carved out at
+// generation time
+export function paintOasis(map: number[][], seed: number): Set<string> {
+  const rng = mulberry32(seed ^ OASIS_PLACEMENT_SALT);
+  const oasis = buildOasisPatch(
+    rng,
+    MAP_W,
+    MAP_H,
+    SPAWN_X,
+    SPAWN_Y,
+    OASIS_DISTANCE_TILES,
+    OASIS_RADIUS,
+  );
+  for (const key of oasis) {
+    const [x, y] = key.split(',').map(Number);
+    map[y][x] = OASIS;
+  }
+  return oasis;
+}
+
 // builds the noise-generated 'stone' layer via worldgen.ts's buildStones
 // (left completely untouched), then enumerates the separated boulder-cluster
 // "structures" that noise pass produces (findRegions, called directly on
 // buildStones' own `stones` set — each connected clump of solid tiles is one
-// structure) and, for every one at or above MIN_STRUCTURE_SIZE, reserves a
-// cluster of its tiles for a full resource kit: wood/soil overwrite the
-// 'stone' tile with a different diggable type (so digging that specific tile
-// yields wood/soil instead of plain stone); ore/energySeed are ground items
-// placed on cells that stay 'stone' — same pattern the ground already uses
-// for it elsewhere (doPickup checks state.groundItems before the tile, so
-// the item is grabbed on approach and the stone tile itself still needs a
-// separate dig to clear). Ground items are returned separately since
-// state.groundItems isn't populated until after the atlas is built (see
+// structure) and, for every one at or above MIN_STRUCTURE_SIZE, rolls ore
+// independently on each interior cell (worldgen.ts's interiorCells, so ore
+// never lands on a structure's outer edge — it has to be dug into, not just
+// walked up to) at ORE_SPAWN_CHANCE. Ore is a ground item placed on cells
+// that stay 'stone' — same pattern the ground already uses for it elsewhere
+// (doPickup checks state.groundItems before the tile, so the item is grabbed
+// on approach and the stone tile itself still needs a separate dig to
+// clear). Ground items are returned separately since state.groundItems
+// isn't populated until after the atlas is built (see
 // createGameState/regenerateWorld). Clusters below the threshold are left
 // as plain undecorated stone — small rubble, not real scavenge sites.
 // Because buildStones' spawn-safety carve always removes a 25-tile bubble
 // from `stones` regardless of seed, the player never spawns inside a
 // structure — it always starts in the open wasteland and has to go find one.
-function buildWorldTiles(seed: number): {
+// Also paints the one oasis patch into `map` and carves it out of `stones`
+// so the two features never fight for the same cells (see paintOasis above).
+function buildWorldTiles(
+  seed: number,
+  map: number[][],
+): {
   tiles: Map<string, TileType>;
   resourceItems: GroundItem[];
 } {
+  const oasis = paintOasis(map, seed);
   const stones = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
+  for (const key of oasis) stones.delete(key);
   const tiles = new Map<string, TileType>();
   for (const key of stones) tiles.set(key, 'stone');
 
@@ -270,27 +303,23 @@ function buildWorldTiles(seed: number): {
 
   for (const structure of structures) {
     if (structure.length < MIN_STRUCTURE_SIZE) continue;
-    const energySeedCount = Math.max(
-      STRUCTURE_MIN_ENERGY_SEED,
-      Math.round(structure.length * STRUCTURE_ENERGY_SEED_DENSITY),
-    );
-    const reserveCount =
-      STRUCTURE_WOOD_COUNT +
-      STRUCTURE_SOIL_COUNT +
-      STRUCTURE_ORE_COUNT +
-      energySeedCount;
-    const cells = pickDistinctCells(structure, reserveCount, rng);
-    let i = 0;
-    for (let n = 0; n < STRUCTURE_WOOD_COUNT && i < cells.length; n++, i++)
-      tiles.set(cells[i].x + ',' + cells[i].y, 'wood');
-    for (let n = 0; n < STRUCTURE_SOIL_COUNT && i < cells.length; n++, i++)
-      tiles.set(cells[i].x + ',' + cells[i].y, 'soil');
-    for (let n = 0; n < STRUCTURE_ORE_COUNT && i < cells.length; n++, i++)
-      resourceItems.push({ x: cells[i].x, y: cells[i].y, type: 'ore' });
-    for (; i < cells.length; i++)
-      resourceItems.push({ x: cells[i].x, y: cells[i].y, type: 'energySeed' });
+    for (const cell of interiorCells(structure, stones)) {
+      if (rng() < ORE_SPAWN_CHANCE)
+        resourceItems.push({ x: cell.x, y: cell.y, type: 'ore' });
+    }
   }
   return { tiles, resourceItems };
+}
+
+// records one sand-trail mark at (x,y), the tile the player is stepping off
+// of — called on every successful player step (see tryPlayerStep in
+// systems/player-actions.ts), not the generic startStep primitive shared
+// with enemies, since the trail is player-only. Bounded to FOOTPRINT_MAX so
+// a long walk doesn't grow the array forever — the oldest mark is dropped
+// first, same as it'd have faded out anyway.
+export function leaveFootprint(state: GameState, x: number, y: number): void {
+  state.footprints.push({ x, y, born: performance.now() });
+  if (state.footprints.length > FOOTPRINT_MAX) state.footprints.shift();
 }
 
 export function spawnFloatingText(
@@ -319,15 +348,17 @@ export function regenerateWorld(
   state.seed = newSeed;
   state.rng = mulberry32(newSeed);
 
-  const { tiles, resourceItems } = buildWorldTiles(newSeed);
+  state.map = buildMap(MAP_W, MAP_H);
+  const { tiles, resourceItems } = buildWorldTiles(newSeed, state.map);
   state.tiles = tiles;
   buildGroundAtlas(state.refs, state.map, state.tiles);
-  buildWorldMapAtlas(state.refs, state.tiles);
+  buildWorldMapAtlas(state.refs, state.map, state.tiles);
   state.groundItems.clear();
   state.seeds.clear();
   state.smelters.clear();
   state.furnaces.clear();
   state.projectiles.length = 0;
+  state.footprints.length = 0;
   for (const item of resourceItems)
     state.groundItems.set(item.x + ',' + item.y, item);
   spawnEnemies(state);
@@ -354,7 +385,7 @@ export function createGameState(
   const seed = INITIAL_SEED;
   const rng = mulberry32(seed);
   const map = buildMap(MAP_W, MAP_H);
-  const { tiles, resourceItems } = buildWorldTiles(seed);
+  const { tiles, resourceItems } = buildWorldTiles(seed, map);
 
   const state: GameState = {
     refs,
@@ -388,12 +419,14 @@ export function createGameState(
       attacked: false,
       attackTarget: null,
       nextAttackAt: 0,
+      nextMoveAt: 0,
       hp: PLAYER_MAX_HP,
       maxHp: PLAYER_MAX_HP,
       flashUntil: 0,
     },
     floatingTexts: [],
     projectiles: [],
+    footprints: [],
     zoomIndex: 0,
     VP_W: 0,
     VP_H: 0,
@@ -402,7 +435,7 @@ export function createGameState(
   };
 
   buildGroundAtlas(refs, map, tiles);
-  buildWorldMapAtlas(refs, tiles);
+  buildWorldMapAtlas(refs, map, tiles);
   for (const item of resourceItems)
     state.groundItems.set(item.x + ',' + item.y, item);
   spawnEnemies(state);

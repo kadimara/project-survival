@@ -259,12 +259,19 @@ export function initColonyGame(): void {
       useHeldItem(state, hud);
       player.pendingUse = false;
     }
+    // stepping onto water leaves the player unable to move again for a few
+    // extra ticks (see Player.nextMoveAt in types.ts, set by tryPlayerStep)
+    // — every path-consuming branch below only shifts a step off
+    // player.path once it knows the step will actually be taken, so a tick
+    // that's still on cooldown leaves the path untouched instead of
+    // silently dropping the queued step
+    const canStepNow = state.tick >= player.nextMoveAt;
     const dir = heldDir();
     if (dir) {
       player.path = [];
       player.pendingAction = null;
       player.attackTarget = null;
-      tryMove(state, hud, dir, walkableFn);
+      if (canStepNow) tryMove(state, hud, dir, walkableFn);
     } else if (player.attackTarget && player.attackTarget.hp > 0) {
       const t = player.attackTarget;
       // a ranged weapon (weaponRange > 1, see WEAPON_DEFS in constants.ts)
@@ -296,11 +303,12 @@ export function initColonyGame(): void {
           if (p.length) player.path = p;
           else player.attackTarget = null;
         }
-        if (player.path.length) {
-          const next = player.path.shift()!;
+        if (player.path.length && canStepNow) {
+          const next = player.path[0];
           const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-          if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
-            player.path = [];
+          if (tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
+            player.path.shift();
+          else player.path = [];
         }
       }
     } else if (player.pendingAction) {
@@ -315,19 +323,23 @@ export function initColonyGame(): void {
         else doPlace(state, hud, pa.x, pa.y);
         player.pendingAction = null;
       } else if (player.path.length) {
-        const next = player.path.shift()!;
-        const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-        if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
-          player.path = [];
+        if (canStepNow) {
+          const next = player.path[0];
+          const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
+          if (tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
+            player.path.shift();
+          else player.path = [];
+        }
       } else {
         // path exhausted without ever reaching adjacency — give up quietly
         player.pendingAction = null;
       }
-    } else if (player.path.length) {
-      const next = player.path.shift()!;
+    } else if (player.path.length && canStepNow) {
+      const next = player.path[0];
       const dir = dirBetween(player.tileX, player.tileY, next.x, next.y);
-      if (!tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
-        player.path = [];
+      if (tryPlayerStep(state, hud, next.x, next.y, dir, walkableFn))
+        player.path.shift();
+      else player.path = [];
     }
 
     updateSeeds(state);
