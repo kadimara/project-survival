@@ -3,6 +3,7 @@ import {
   createTestEnemy,
   createTestGameState,
   createTestHudRefs,
+  createTestTree,
 } from '../test/fixtures';
 import {
   PLAYER_ATK_COOLDOWN_TICKS,
@@ -12,13 +13,16 @@ import {
 import { walkable } from '../state/state';
 import {
   attemptPlayerAttack,
+  doPickup,
+  doPlace,
   tryPlaceAt,
+  tryPlayerStep,
   trySelectPickup,
 } from './player-actions';
 
-// doPickup's setTile call patches the ground atlas, which paints to a real
-// canvas context — see combat.test.ts for the same reasoning. Only the
-// adjacent-pickup test below actually calls setTile.
+// doPickup's setObstacle call patches the ground atlas, which paints to a
+// real canvas context — see combat.test.ts for the same reasoning. Only
+// the adjacent-pickup test below actually calls setObstacle.
 vi.mock('../render/ground-atlas', () => ({
   buildGroundAtlas: vi.fn(),
   patchGroundAtlasTile: vi.fn(),
@@ -36,6 +40,18 @@ describe('attemptPlayerAttack', () => {
     attemptPlayerAttack(state, hud, 1000);
 
     expect(enemy.hp).toBe(enemy.maxHp - PLAYER_ATK_DAMAGE);
+  });
+
+  it('deals unarmed damage to a tree target instead of an enemy', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.trees.set('10,10', tree);
+    state.player.attackTarget = tree;
+
+    attemptPlayerAttack(state, hud, 1000);
+
+    expect(tree.hp).toBe(tree.maxHp - PLAYER_ATK_DAMAGE);
   });
 
   it('deals the sword damage bonus and uses its own cooldown when a sword is held', () => {
@@ -134,12 +150,54 @@ describe('attemptPlayerAttack', () => {
   });
 });
 
+describe('tryPlayerStep', () => {
+  it('leaves a footprint on the tile being left, not the one walked onto', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const { tileX, tileY } = state.player;
+    const walkableFn = (x: number, y: number) => walkable(state, x, y);
+
+    const moved = tryPlayerStep(
+      state,
+      hud,
+      tileX + 1,
+      tileY,
+      'right',
+      walkableFn,
+    );
+
+    expect(moved).toBe(true);
+    expect(state.footprints).toHaveLength(1);
+    expect(state.footprints[0]).toMatchObject({ x: tileX, y: tileY });
+  });
+
+  it('does not move or leave a footprint when the destination is blocked', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const { tileX, tileY } = state.player;
+    state.obstacles.set(tileX + 1 + ',' + tileY, 'stone');
+    const walkableFn = (x: number, y: number) => walkable(state, x, y);
+
+    const moved = tryPlayerStep(
+      state,
+      hud,
+      tileX + 1,
+      tileY,
+      'right',
+      walkableFn,
+    );
+
+    expect(moved).toBe(false);
+    expect(state.footprints).toHaveLength(0);
+  });
+});
+
 describe('trySelectPickup', () => {
   it('clears an in-progress attackTarget when queueing a walk to a distant item', () => {
     const state = createTestGameState();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
-    state.tiles.set('20,20', 'wood');
+    state.obstacles.set('20,20', 'wood');
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
     trySelectPickup(state, 20, 20, walkableFn);
@@ -159,7 +217,7 @@ describe('trySelectPickup', () => {
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
     const { tileX, tileY } = state.player;
-    state.tiles.set(tileX + 1 + ',' + tileY, 'wood');
+    state.obstacles.set(tileX + 1 + ',' + tileY, 'wood');
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
     trySelectPickup(state, tileX + 1, tileY, walkableFn);
@@ -206,5 +264,68 @@ describe('tryPlaceAt', () => {
       y: tileY,
     });
     expect(state.player.held).toBe('ore');
+  });
+});
+
+describe('doPickup', () => {
+  it('picks up a floor tile when no obstacle is present, revealing bare ground', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.floor.set('5,5', 'dirt');
+
+    doPickup(state, hud, 5, 5);
+
+    expect(state.player.held).toBe('dirt');
+    expect(state.floor.get('5,5')).toBeUndefined();
+  });
+
+  it('picking up an obstacle sitting on a floor tile leaves the floor intact', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.floor.set('5,5', 'dirt');
+    state.obstacles.set('5,5', 'wood');
+
+    doPickup(state, hud, 5, 5);
+
+    expect(state.player.held).toBe('wood');
+    expect(state.obstacles.get('5,5')).toBeUndefined();
+    expect(state.floor.get('5,5')).toBe('dirt');
+  });
+
+  it('a non-pickable obstacle blocks reaching the floor underneath it', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.floor.set('5,5', 'dirt');
+    state.obstacles.set('5,5', 'tree');
+
+    doPickup(state, hud, 5, 5);
+
+    expect(state.player.held).toBeNull();
+    expect(state.obstacles.get('5,5')).toBe('tree');
+    expect(state.floor.get('5,5')).toBe('dirt');
+  });
+});
+
+describe('doPlace', () => {
+  it('places a held floor tile onto an empty cell', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.player.held = 'dirt';
+
+    doPlace(state, hud, 5, 5);
+
+    expect(state.floor.get('5,5')).toBe('dirt');
+    expect(state.player.held).toBeNull();
+  });
+
+  it('fails to place a held floor tile onto a cell that already has one', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.floor.set('5,5', 'dirt');
+    state.player.held = 'dirt';
+
+    doPlace(state, hud, 5, 5);
+
+    expect(state.player.held).toBe('dirt'); // stays in hand
   });
 });

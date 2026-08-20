@@ -49,7 +49,7 @@ describe('updateSmelters', () => {
     state.tick = 1000 + ORE_SMELT_TICKS - 1;
     updateSmelters(state);
     expect(state.smelters.has('1,1')).toBe(true);
-    expect(state.groundItems.has('1,1')).toBe(false);
+    expect(state.items.has('1,1')).toBe(false);
   });
 
   it('resolves exactly at readyAt (inclusive boundary)', () => {
@@ -67,7 +67,7 @@ describe('updateSmelters', () => {
       dumpInFurnace(state, 1, 1, item);
       state.tick = 1000 + ORE_SMELT_TICKS;
       updateSmelters(state);
-      expect(state.groundItems.get('1,1')).toEqual({
+      expect(state.items.get('1,1')).toEqual({
         x: 1,
         y: 1,
         type: 'ingot',
@@ -80,7 +80,7 @@ describe('updateSmelters', () => {
     dumpInFurnace(state, 1, 1, 'ingot');
     state.tick = 1000 + ITEM_MELT_TICKS;
     updateSmelters(state);
-    expect(state.groundItems.get('1,1')).toEqual({ x: 1, y: 1, type: 'ingot' });
+    expect(state.items.get('1,1')).toEqual({ x: 1, y: 1, type: 'ingot' });
   });
 
   it.each(['energy', 'energySeed'] as const)(
@@ -90,7 +90,7 @@ describe('updateSmelters', () => {
       dumpInFurnace(state, 1, 1, item);
       state.tick = 1000 + ITEM_MELT_TICKS;
       updateSmelters(state);
-      expect(state.groundItems.has('1,1')).toBe(false);
+      expect(state.items.has('1,1')).toBe(false);
     },
   );
 
@@ -113,7 +113,7 @@ describe('updateSmelters', () => {
 
     expect(state.smelters.has('1,1')).toBe(false);
     expect(state.smelters.has('2,2')).toBe(true);
-    expect(state.groundItems.has('1,1')).toBe(true);
-    expect(state.groundItems.has('2,2')).toBe(false);
+    expect(state.items.has('1,1')).toBe(true);
+    expect(state.items.has('2,2')).toBe(false);
   });
 });

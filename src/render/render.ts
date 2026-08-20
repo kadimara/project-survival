@@ -4,19 +4,25 @@
 import type { GameState, Point } from '../types/types';
 import {
   carryColor,
+  FOOTPRINT_FADE_MS,
+  FOOTPRINT_MAX_ALPHA,
   ITEM_DEFS,
   MAP_H,
   MAP_W,
+  OBSTACLE_DEFS,
   PLAYER_COLOR,
   PLAYER_EDGE,
   PLAYER_INSET,
   TILE,
-  TILE_DEFS,
+  TREE_CANOPY_COLORS,
+  WAKE_FADE_MS,
+  WAKE_MAX_ALPHA,
   WORLD_TILE,
 } from '../constants';
 import { getClampedCamX, getClampedCamY } from './camera';
-import { tileAt } from '../state/state';
+import { obstacleAt } from '../state/state';
 import {
+  COLORS,
   drawBowIcon,
   drawFurnaceGlow,
   drawHpBar,
@@ -24,8 +30,12 @@ import {
   drawProjectile,
   drawScatteredDots,
   drawSquareEntity,
+  drawStepDarken,
   drawSwordIcon,
+  drawTreeCanopy,
+  drawWake,
 } from './rendering';
+import { DIRT, OASIS } from '../worldgen/worldgen';
 
 // per-tile pseudo-random phase so several furnaces don't flicker in lockstep
 function furnacePhase(x: number, y: number): number {
@@ -34,10 +44,14 @@ function furnacePhase(x: number, y: number): number {
 
 export function renderWorldMap(state: GameState): void {
   const { worldCanvas, worldCtx, worldAtlas } = state.refs;
-  worldCtx.fillStyle = '#402c19';
+  // same sand color as the main canvas background (COLORS[DIRT] in
+  // rendering.ts) — this fill only shows through at the atlas's own edges,
+  // since patchWorldMapAtlasTile already paints every open-ground cell the
+  // same color
+  worldCtx.fillStyle = COLORS[DIRT][0];
   worldCtx.fillRect(0, 0, worldCanvas.width, worldCanvas.height);
   worldCtx.drawImage(worldAtlas, 0, 0);
-  for (const item of state.groundItems.values()) {
+  for (const item of state.items.values()) {
     worldCtx.fillStyle = ITEM_DEFS[item.type].colors.primary;
     worldCtx.fillRect(
       item.x * WORLD_TILE,
@@ -92,6 +106,34 @@ export function render(state: GameState, now: number): void {
     drawFurnaceGlow(ctx, TILE, sx, sy, now, furnacePhase(furnace.x, furnace.y));
   }
 
+  // player's trail: fades out over FOOTPRINT_FADE_MS (sand) or the shorter
+  // WAKE_FADE_MS (water — see below). Expired marks are pruned in this same
+  // pass (iterating backwards so splice is safe), same convention as the
+  // floatingTexts cleanup further down. A mark left on the oasis's water
+  // (state.map, not state.obstacles — see OASIS in worldgen.ts) draws as a pale
+  // wake instead of a sand darkening, so walking through the water leaves a
+  // trailing stream behind the player.
+  for (let i = state.footprints.length - 1; i >= 0; i--) {
+    const fp = state.footprints[i];
+    const isWater = state.map[fp.y]?.[fp.x] === OASIS;
+    const fadeMs = isWater ? WAKE_FADE_MS : FOOTPRINT_FADE_MS;
+    const age = now - fp.born;
+    if (age > fadeMs) {
+      state.footprints.splice(i, 1);
+      continue;
+    }
+    const sx = fp.x * TILE - camX,
+      sy = fp.y * TILE - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    const alpha = 1 - age / fadeMs;
+    if (isWater) {
+      drawWake(ctx, TILE, sx, sy, WAKE_MAX_ALPHA * alpha);
+    } else {
+      drawStepDarken(ctx, TILE, sx, sy, FOOTPRINT_MAX_ALPHA * alpha);
+    }
+  }
+
   for (const step of player.path) {
     const cx = step.x * TILE + TILE / 2 - camX,
       cy = step.y * TILE + TILE / 2 - camY;
@@ -129,7 +171,7 @@ export function render(state: GameState, now: number): void {
     );
   }
 
-  for (const item of state.groundItems.values()) {
+  for (const item of state.items.values()) {
     const sx = item.x * TILE - camX,
       sy = item.y * TILE - camY;
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
@@ -154,53 +196,101 @@ export function render(state: GameState, now: number): void {
     drawProjectile(ctx, sx, sy, ITEM_DEFS.bow.colors.primary);
   }
 
+  // layering: enemies, the player, and every tree's canopy are drawn in one
+  // y-sorted pass instead of a fixed enemies-then-player order, so a tree's
+  // canopy (drawn one tile north of its trunk, no data-layer presence of
+  // its own — see state.trees) correctly appears behind an actor standing
+  // above it and in front of one standing at/below it; enemy-vs-player
+  // ordering is sorted the same way as a natural side effect.
+  const layered: { y: number; draw: () => void }[] = [];
+
   for (const enemy of state.enemies) {
     const sx = enemy.px - camX,
       sy = enemy.py - camY;
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
-    drawSquareEntity(ctx, TILE, sx, sy, '#8b3fae', '#43205a', 2);
-    if (enemy.flashUntil && now < enemy.flashUntil) {
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
-    }
-    if (enemy.hp < enemy.maxHp)
-      drawHpBar(ctx, TILE, sx, sy, enemy.hp / enemy.maxHp);
+    layered.push({
+      y: enemy.py,
+      draw: () => {
+        drawSquareEntity(ctx, TILE, sx, sy, '#8b3fae', '#43205a', 2);
+        if (enemy.flashUntil && now < enemy.flashUntil) {
+          ctx.fillStyle = 'rgba(255,255,255,0.5)';
+          ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
+        }
+        if (enemy.hp < enemy.maxHp)
+          drawHpBar(ctx, TILE, sx, sy, enemy.hp / enemy.maxHp);
+      },
+    });
   }
 
   {
     const sx = player.px - camX,
       sy = player.py - camY;
-    drawSquareEntity(
-      ctx,
-      TILE,
-      sx,
-      sy,
-      PLAYER_COLOR,
-      PLAYER_EDGE,
-      PLAYER_INSET,
-    );
-    if (player.flashUntil && now < player.flashUntil) {
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
-    }
-    if (player.held === 'sword' || player.held === 'bow') {
-      const box = Math.round(TILE * 0.6);
-      const drawIcon = player.held === 'sword' ? drawSwordIcon : drawBowIcon;
-      drawIcon(
-        ctx,
-        box,
-        sx + TILE / 2 - box / 2,
-        sy - box,
-        ITEM_DEFS[player.held].colors,
-      );
-    } else if (player.held) {
-      ctx.fillStyle = carryColor(player.held);
-      ctx.fillRect(sx + TILE / 2 - 2, sy - 5, 4, 4);
-    }
-    if (player.hp < player.maxHp)
-      drawHpBar(ctx, TILE, sx, sy, player.hp / player.maxHp);
+    layered.push({
+      y: player.py,
+      draw: () => {
+        drawSquareEntity(
+          ctx,
+          TILE,
+          sx,
+          sy,
+          PLAYER_COLOR,
+          PLAYER_EDGE,
+          PLAYER_INSET,
+        );
+        if (player.flashUntil && now < player.flashUntil) {
+          ctx.fillStyle = 'rgba(255,255,255,0.5)';
+          ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
+        }
+        if (player.held === 'sword' || player.held === 'bow') {
+          const box = Math.round(TILE * 0.6);
+          const drawIcon =
+            player.held === 'sword' ? drawSwordIcon : drawBowIcon;
+          drawIcon(
+            ctx,
+            box,
+            sx + TILE / 2 - box / 2,
+            sy - box,
+            ITEM_DEFS[player.held].colors,
+          );
+        } else if (player.held) {
+          ctx.fillStyle = carryColor(player.held);
+          ctx.fillRect(sx + TILE / 2 - 2, sy - 5, 4, 4);
+        }
+        if (player.hp < player.maxHp)
+          drawHpBar(ctx, TILE, sx, sy, player.hp / player.maxHp);
+      },
+    });
   }
+
+  for (const tree of state.trees.values()) {
+    const sx = tree.px - camX,
+      sy = tree.py - camY;
+    // culled against the canopy's own screen rect (one tile north of the
+    // trunk), since that extends furthest of anything drawn for a tree
+    if (
+      sx < -TILE ||
+      sy - TILE < -TILE ||
+      sx > canvas.width ||
+      sy - TILE > canvas.height
+    )
+      continue;
+    layered.push({
+      y: tree.py,
+      draw: () => {
+        drawTreeCanopy(ctx, TILE, sx, sy - TILE, TREE_CANOPY_COLORS);
+        if (tree.flashUntil && now < tree.flashUntil) {
+          ctx.fillStyle = 'rgba(255,255,255,0.5)';
+          ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
+        }
+        if (tree.hp < tree.maxHp)
+          drawHpBar(ctx, TILE, sx, sy, tree.hp / tree.maxHp);
+      },
+    });
+  }
+
+  layered.sort((a, b) => a.y - b.y);
+  for (const entry of layered) entry.draw();
 
   const hovered: Point | null = state.hoveredTile;
   if (
@@ -212,9 +302,9 @@ export function render(state: GameState, now: number): void {
   ) {
     const hx = hovered.x * TILE - camX,
       hy = hovered.y * TILE - camY;
-    const hoveredType = tileAt(state, hovered.x, hovered.y);
+    const hoveredType = obstacleAt(state, hovered.x, hovered.y);
     ctx.strokeStyle = hoveredType
-      ? TILE_DEFS[hoveredType].colors.primary
+      ? OBSTACLE_DEFS[hoveredType].colors.primary
       : '#ffffff';
     ctx.lineWidth = 1;
     ctx.strokeRect(hx + 0.5, hy + 0.5, TILE - 1, TILE - 1);

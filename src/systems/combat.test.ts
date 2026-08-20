@@ -3,6 +3,7 @@ import {
   createTestEnemy,
   createTestGameState,
   createTestHudRefs,
+  createTestTree,
 } from '../test/fixtures';
 import {
   ENEMY_COUNT,
@@ -17,6 +18,8 @@ import {
 import {
   damageEnemy,
   damagePlayer,
+  damageTree,
+  fellTree,
   fireProjectile,
   killEnemy,
   spendAttackHp,
@@ -51,14 +54,13 @@ function assertWorldWasReset(state: ReturnType<typeof createTestGameState>) {
   expect(state.seeds.size).toBe(0);
   expect(state.smelters.size).toBe(0);
   expect(state.furnaces.size).toBe(0);
-  // spawnEnemies always places the training dummy plus up to ENEMY_COUNT
-  // wandering enemies using the seeded rng, so the exact wandering count is
-  // deterministic but not asserted here to avoid coupling this test to
-  // worldgen/spawn-placement internals
-  expect(state.enemies.length).toBeGreaterThan(0);
-  expect(state.enemies.length).toBeLessThanOrEqual(ENEMY_COUNT + 1);
-  expect(state.enemies.some((e) => e.stationary)).toBe(true);
-  expect(state.groundItems.size).toBeGreaterThan(0);
+  // spawnEnemies places up to ENEMY_COUNT wandering enemies using the seeded
+  // rng (the training dummy is disabled for now — see spawnEnemies in
+  // entities/entities.ts), so the exact count is deterministic but not
+  // asserted here to avoid coupling this test to worldgen/spawn-placement
+  // internals
+  expect(state.enemies.length).toBeLessThanOrEqual(ENEMY_COUNT);
+  expect(state.items.size).toBeGreaterThan(0);
   expect(state.projectiles).toEqual([]);
 }
 
@@ -293,7 +295,7 @@ describe('killEnemy', () => {
     const enemy = createTestEnemy(10, 10);
     state.enemies.push(enemy);
     killEnemy(state, hud, enemy);
-    expect(state.groundItems.get('10,10')).toEqual({
+    expect(state.items.get('10,10')).toEqual({
       x: 10,
       y: 10,
       type: 'energy',
@@ -305,9 +307,9 @@ describe('killEnemy', () => {
     const hud = createTestHudRefs();
     const enemy = createTestEnemy(5, 5);
     state.enemies.push(enemy);
-    state.groundItems.set('5,5', { x: 5, y: 5, type: 'ore' });
+    state.items.set('5,5', { x: 5, y: 5, type: 'ore' });
     killEnemy(state, hud, enemy);
-    expect(state.groundItems.get('6,5')).toEqual({
+    expect(state.items.get('6,5')).toEqual({
       x: 6,
       y: 5,
       type: 'energy',
@@ -319,10 +321,10 @@ describe('killEnemy', () => {
     const hud = createTestHudRefs();
     const enemy = createTestEnemy(5, 5);
     state.enemies.push(enemy);
-    state.groundItems.set('5,5', { x: 5, y: 5, type: 'ore' });
-    state.groundItems.set('6,5', { x: 6, y: 5, type: 'ore' });
+    state.items.set('5,5', { x: 5, y: 5, type: 'ore' });
+    state.items.set('6,5', { x: 6, y: 5, type: 'ore' });
     killEnemy(state, hud, enemy);
-    expect(state.groundItems.get('4,5')).toEqual({
+    expect(state.items.get('4,5')).toEqual({
       x: 4,
       y: 5,
       type: 'energy',
@@ -343,11 +345,127 @@ describe('killEnemy', () => {
     // but the floating text/drop/hud-update still happen unconditionally
     expect(state.enemies).toEqual([other]);
     expect(state.floatingTexts.at(-1)?.text).toBe('defeated!');
-    expect(state.groundItems.get('10,10')).toEqual({
+    expect(state.items.get('10,10')).toEqual({
       x: 10,
       y: 10,
       type: 'energy',
     });
+  });
+});
+
+describe('damageTree', () => {
+  it('reduces hp by amount and sets flashUntil', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.trees.set('10,10', tree);
+
+    damageTree(state, hud, tree, 3, 1000);
+
+    expect(tree.hp).toBe(tree.maxHp - 3);
+    expect(tree.flashUntil).toBe(1000 + HIT_FLASH_MS);
+  });
+
+  it('pushes a damage floating text at the tree', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.trees.set('10,10', tree);
+
+    damageTree(state, hud, tree, 3, 1000);
+
+    const text = state.floatingTexts.at(-1);
+    expect(text?.text).toBe('-3');
+    expect(text?.color).toBe('#e8a838');
+  });
+
+  it('does not fell the tree on a non-lethal hit', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.trees.set('10,10', tree);
+    state.obstacles.set('10,10', 'tree');
+
+    damageTree(state, hud, tree, tree.hp - 1, 1000);
+
+    expect(state.obstacles.get('10,10')).toBe('tree');
+  });
+
+  it('floors hp at 0 and fells the tree on a lethal hit', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.trees.set('10,10', tree);
+    state.obstacles.set('10,10', 'tree');
+
+    damageTree(state, hud, tree, tree.hp + 999, 1000);
+
+    expect(tree.hp).toBe(0);
+    expect(state.obstacles.get('10,10')).toBe('wood');
+  });
+});
+
+describe('fellTree', () => {
+  it("swaps the tree's obstacle cell for 'wood'", () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.trees.set('10,10', tree);
+    state.obstacles.set('10,10', 'tree');
+
+    fellTree(state, hud, tree);
+
+    expect(state.obstacles.get('10,10')).toBe('wood');
+  });
+
+  it('removes the tree from state.trees', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.trees.set('10,10', tree);
+    state.obstacles.set('10,10', 'tree');
+
+    fellTree(state, hud, tree);
+
+    expect(state.trees.has('10,10')).toBe(false);
+  });
+
+  it('pushes a "felled!" floating text', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.obstacles.set('10,10', 'tree');
+
+    fellTree(state, hud, tree);
+
+    const text = state.floatingTexts.at(-1);
+    expect(text?.text).toBe('felled!');
+    expect(text?.color).toBe('#c1633c');
+  });
+
+  it('clears player.attackTarget when it was targeting the felled tree', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    state.obstacles.set('10,10', 'tree');
+    state.player.attackTarget = tree;
+
+    fellTree(state, hud, tree);
+
+    expect(state.player.attackTarget).toBeNull();
+  });
+
+  it('leaves player.attackTarget alone when it was targeting something else', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const tree = createTestTree(10, 10);
+    const otherTarget = createTestEnemy(1, 1);
+    state.obstacles.set('10,10', 'tree');
+    state.player.attackTarget = otherTarget;
+
+    fellTree(state, hud, tree);
+
+    expect(state.player.attackTarget).toBe(otherTarget);
   });
 });
 

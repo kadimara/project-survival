@@ -1,8 +1,8 @@
 // Soil-planted energySeed: periodically spawns a separate energy item on
-// the same cell, tracked in state.seeds rather than state.groundItems so
-// the seed and the energy it produces can coexist at one position. The
-// spawned energy is an ordinary groundItems entry — pickup/placement/
-// rendering for it need no seed-awareness at all.
+// the same cell, tracked in state.seeds rather than state.items so the
+// seed and the energy it produces can coexist at one position. The spawned
+// energy is an ordinary state.items entry — pickup/placement/rendering for
+// it need no seed-awareness at all.
 import type { GameState } from '../types/types';
 import { ENERGY_SEED_GROW_TICKS } from '../constants';
 
@@ -23,7 +23,7 @@ export function updateSeeds(state: GameState): void {
   for (const seed of state.seeds.values()) {
     if (state.tick < seed.readyAt) continue;
     const key = seed.x + ',' + seed.y;
-    if (state.groundItems.has(key)) continue;
-    state.groundItems.set(key, { x: seed.x, y: seed.y, type: 'energy' });
+    if (state.items.has(key)) continue;
+    state.items.set(key, { x: seed.x, y: seed.y, type: 'energy' });
   }
 }

@@ -1,6 +1,6 @@
 // Furnace-based smelting: any item can be dumped onto an empty furnace
-// tile (gated by openForGroundItem in state/state.ts, same as soil),
-// tracked in state.smelters rather than state.groundItems — mirrors how
+// obstacle (gated by openForItem in state/state.ts, same as soil), tracked
+// in state.smelters rather than state.items — mirrors how
 // systems/farming.ts tracks a planted seed separately from the energy it
 // grows. While a job is running the player can pick the original item
 // straight back up (see doPickup in player-actions.ts), canceling it. Once
@@ -48,7 +48,7 @@ export function updateSmelters(state: GameState): void {
     const outcome = outcomeFor(job.item);
     if (outcome !== 'destroyed') {
       const type = SMELTS_TO_INGOT.has(job.item) ? 'ingot' : job.item;
-      state.groundItems.set(key, { x: job.x, y: job.y, type });
+      state.items.set(key, { x: job.x, y: job.y, type });
     }
     state.smelters.delete(key);
   }

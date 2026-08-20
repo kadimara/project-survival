@@ -7,26 +7,31 @@ import type { Rng } from '../worldgen/worldgen';
 
 export type Dir = 'up' | 'down' | 'left' | 'right';
 
-// tiles are the grid layer: solid, atlas-baked (see TILE_DEFS in
-// constants.ts). Items are the ground layer: loose, drawn per-frame, sit on
-// top of terrain rather than being part of the grid (see ITEM_DEFS).
-export type TileType = 'stone' | 'soil' | 'furnace' | 'wood';
+// three occupancy layers, bottom to top: floor (walkable ground material,
+// see FLOOR_DEFS in constants.ts), obstacles (solid, atlas-baked, see
+// OBSTACLE_DEFS), and items (loose, drawn per-frame, sit on top of an
+// obstacle that opts in via allowItem — see ITEM_DEFS). Floor and obstacles
+// are independent maps, so an obstacle can sit on top of a floor tile
+// without the two ever conflicting.
+export type FloorType = 'dirt';
+export type ObstacleType =
+  'stone' | 'soil' | 'furnace' | 'wood' | 'fiber' | 'tree';
 export type ItemType =
   'energy' | 'energySeed' | 'ingot' | 'ore' | 'sword' | 'bow';
-export type CarryType = TileType | ItemType;
+export type CarryType = ObstacleType | ItemType | FloorType;
 
 export interface Point {
   x: number;
   y: number;
 }
 
-// entry in the ground-item layer; needs its own x/y since it's stored in a
+// entry in the item layer; needs its own x/y since it's stored in a
 // position-keyed map alongside its key, for convenient per-frame iteration
-export interface GroundItem extends Point {
+export interface Item extends Point {
   type: ItemType;
 }
 
-// a seed planted on soil, tracked separately from state.groundItems so an
+// a seed planted on soil, tracked separately from state.items so an
 // energySeed and the energy it periodically spawns can occupy the same
 // cell at once (see systems/farming.ts). readyAt is a tick count
 // (state.tick), not a millisecond timestamp.
@@ -34,12 +39,12 @@ export interface PlantedSeed extends Point {
   readyAt: number;
 }
 
-// an item dumped on a furnace tile, tracked separately from
-// state.groundItems for the same reason as PlantedSeed — see
-// systems/smelting.ts. The player can pick the original `item` back up any
-// time before readyAt; once it passes, the job resolves (smelts, survives,
-// or is destroyed) and the entry is removed either way — no re-arming.
-// readyAt is a tick count (state.tick), not a millisecond timestamp.
+// an item dumped on a furnace tile, tracked separately from state.items for
+// the same reason as PlantedSeed — see systems/smelting.ts. The player can
+// pick the original `item` back up any time before readyAt; once it passes,
+// the job resolves (smelts, survives, or is destroyed) and the entry is
+// removed either way — no re-arming. readyAt is a tick count (state.tick),
+// not a millisecond timestamp.
 export interface Smelter extends Point {
   item: ItemType;
   readyAt: number;
@@ -82,18 +87,31 @@ export interface Player extends Actor {
   // needs to work even while chasing or mid-attack, not get starved by them.
   pendingUse: boolean;
   attacked: boolean;
-  attackTarget: Enemy | null;
+  attackTarget: Enemy | Tree | null;
   // tick count (state.tick) at which the next attack becomes allowed, same
   // readyAt-style pattern as Seed/SmeltJob above — gated against state.tick
   // rather than a ms timestamp so attack cadence stays exact regardless of
   // frame timing (see attemptPlayerAttack in systems/player-actions.ts)
   nextAttackAt: number;
+  // tick count (state.tick) at which the next step becomes allowed — same
+  // readyAt-style gating as nextAttackAt above, set by tryPlayerStep
+  // (systems/player-actions.ts) to state.tick + 1 normally, or further out
+  // while wading through the oasis's water (see PLAYER_WATER_MOVE_TICKS in
+  // constants.ts), so movement through water takes proportionally longer in
+  // real time without changing the fixed-tick simulation itself. Checked in
+  // game.ts's simulateTick before a step is issued.
+  nextMoveAt: number;
   hp: number;
   maxHp: number;
   flashUntil: number;
 }
 
 export interface Enemy extends Actor {
+  // discriminant shared with Tree below, so code that can target either
+  // (Player.attackTarget, Projectile.target) can branch to the right
+  // damage-application function without the two types otherwise needing
+  // anything in common beyond position/hp/flash
+  kind: 'enemy';
   hp: number;
   maxHp: number;
   state: 'wander' | 'chase';
@@ -108,6 +126,32 @@ export interface Enemy extends Actor {
   // ignores hp loss (see systems/ai.ts's updateEnemy and entities.ts's
   // makeDummyEnemy)
   stationary: boolean;
+}
+
+// a choppable tree — see OBSTACLE_DEFS.tree in constants.ts for the
+// 2-tall/trunk-only-collides visual, and state.trees for how this is
+// tracked. Deliberately not folded into Enemy/state.enemies: a tree is
+// stationary and has no AI, so it only carries the fields the shared
+// combat code (attemptPlayerAttack, updateProjectiles, the y-sorted render
+// pass) actually needs — px/py are static since a tree never moves,
+// computed once as tileX/tileY * TILE.
+export interface Tree {
+  kind: 'tree';
+  tileX: number;
+  tileY: number;
+  px: number;
+  py: number;
+  hp: number;
+  maxHp: number;
+  flashUntil: number;
+}
+
+// a darkened patch left on a tile the player has walked off of (see
+// leaveFootprint in state/state.ts and its render.ts draw loop) — purely
+// cosmetic, so it's not persisted (see state/persistence.ts) and rebuilt
+// empty on load, same as floatingTexts/projectiles below.
+export interface Footprint extends Point {
+  born: number;
 }
 
 export interface FloatingText {
@@ -127,7 +171,7 @@ export interface FloatingText {
 // render.ts); they don't track the target's later movement, matching the
 // same "hit already decided" convention.
 export interface Projectile {
-  target: Enemy;
+  target: Enemy | Tree;
   damage: number;
   fromPx: number;
   fromPy: number;
@@ -179,18 +223,26 @@ export interface GameState {
   seed: number;
   rng: Rng;
   map: number[][];
-  tiles: Map<string, TileType>;
-  groundItems: Map<string, GroundItem>;
+  floor: Map<string, FloorType>;
+  obstacles: Map<string, ObstacleType>;
+  items: Map<string, Item>;
   seeds: Map<string, PlantedSeed>;
   smelters: Map<string, Smelter>;
-  // positions of every furnace tile, kept in sync by setTile — lets the
-  // per-frame render loop draw the flickering firebox glow (render.ts)
-  // without scanning the whole state.tiles map every frame
+  // positions of every furnace obstacle, kept in sync by setObstacle — lets
+  // the per-frame render loop draw the flickering firebox glow (render.ts)
+  // without scanning the whole state.obstacles map every frame
   furnaces: Map<string, Point>;
+  // every tree obstacle (the trunk cell), same kept-in-sync-by-setObstacle
+  // pattern as furnaces above — lets the per-frame y-sorted render pass
+  // draw each tree's canopy, and attemptPlayerAttack/updateProjectiles
+  // apply damage to one, without scanning the whole state.obstacles map
+  // every frame
+  trees: Map<string, Tree>;
   enemies: Enemy[];
   player: Player;
   floatingTexts: FloatingText[];
   projectiles: Projectile[];
+  footprints: Footprint[];
 
   zoomIndex: number;
   VP_W: number;

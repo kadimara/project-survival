@@ -29,7 +29,7 @@ describe('updateSeeds', () => {
     plantSeed(state, 3, 4);
     state.tick = 1000 + ENERGY_SEED_GROW_TICKS - 1;
     updateSeeds(state);
-    expect(state.groundItems.has('3,4')).toBe(false);
+    expect(state.items.has('3,4')).toBe(false);
   });
 
   it('spawns an energy ground item exactly at readyAt (inclusive boundary)', () => {
@@ -37,7 +37,7 @@ describe('updateSeeds', () => {
     plantSeed(state, 3, 4);
     state.tick = 1000 + ENERGY_SEED_GROW_TICKS;
     updateSeeds(state);
-    expect(state.groundItems.get('3,4')).toEqual({
+    expect(state.items.get('3,4')).toEqual({
       x: 3,
       y: 4,
       type: 'energy',
@@ -47,10 +47,10 @@ describe('updateSeeds', () => {
   it('skips a ready seed whose cell already has a ground item', () => {
     const state = createTestGameState({ tick: 1000 });
     plantSeed(state, 3, 4);
-    state.groundItems.set('3,4', { x: 3, y: 4, type: 'ore' });
+    state.items.set('3,4', { x: 3, y: 4, type: 'ore' });
     state.tick = 1000 + ENERGY_SEED_GROW_TICKS;
     updateSeeds(state);
-    expect(state.groundItems.get('3,4')).toEqual({ x: 3, y: 4, type: 'ore' });
+    expect(state.items.get('3,4')).toEqual({ x: 3, y: 4, type: 'ore' });
   });
 
   it('resolves multiple seeds independently', () => {
@@ -62,8 +62,8 @@ describe('updateSeeds', () => {
     state.tick = ENERGY_SEED_GROW_TICKS;
     updateSeeds(state);
 
-    expect(state.groundItems.has('1,1')).toBe(true);
-    expect(state.groundItems.has('2,2')).toBe(false);
+    expect(state.items.has('1,1')).toBe(true);
+    expect(state.items.has('2,2')).toBe(false);
   });
 
   it('leaves the seed entry in place after it fires (re-arming happens elsewhere)', () => {

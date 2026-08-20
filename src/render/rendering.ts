@@ -2,12 +2,19 @@
 // HP bars. Each function only takes the canvas context plus the primitive
 // values it needs to draw one thing, so none of it depends on the game's
 // entity/state model.
-import { DIRT } from '../worldgen/worldgen';
-import { TILE_DEFS } from '../constants';
-import type { ItemType, TileType } from '../types/types';
+import { DIRT, OASIS } from '../worldgen/worldgen';
+import { OBSTACLE_DEFS } from '../constants';
+import type { ItemType, ObstacleType } from '../types/types';
 
+// desert sand checkerboard — subtle warm-tone banding rather than a flat
+// fill, same "two-tone alternating tile" convention drawTile already used
+// for the old cave-dirt palette. OASIS is translucent (alpha < 1) on
+// purpose — drawTile always paints the sand pair underneath first, so the
+// water blends with it rather than fully covering it, like shallow water
+// over sand.
 export const COLORS: Record<number, [string, string]> = {
-  [DIRT]: ['#393939', '#363636'],
+  [DIRT]: ['#b9ac87', '#b2a47c'],
+  [OASIS]: ['rgba(58,124,165,0.55)', 'rgba(47,102,144,0.55)'],
 };
 
 export function drawTile(
@@ -17,11 +24,17 @@ export function drawTile(
   sx: number,
   sy: number,
 ): void {
-  const pair = COLORS[type] || COLORS[DIRT];
   const tx = sx / TILE,
     ty = sy / TILE;
-  ctx.fillStyle = (tx + ty) % 2 === 0 ? pair[0] : pair[1];
+  const parity = (tx + ty) % 2 === 0 ? 0 : 1;
+  const sand = COLORS[DIRT];
+  ctx.fillStyle = sand[parity];
   ctx.fillRect(sx, sy, TILE, TILE);
+  if (type !== DIRT) {
+    const pair = COLORS[type] || sand;
+    ctx.fillStyle = pair[parity];
+    ctx.fillRect(sx, sy, TILE, TILE);
+  }
 }
 
 export function drawObstacle(
@@ -29,17 +42,130 @@ export function drawObstacle(
   TILE: number,
   sx: number,
   sy: number,
-  type: TileType,
+  type: ObstacleType,
 ): void {
   drawTile(ctx, TILE, DIRT, sx, sy);
-  const { primary, secondary } = TILE_DEFS[type].colors;
+  drawObstacleOverlay(
+    ctx,
+    TILE,
+    sx,
+    sy,
+    OBSTACLE_DEFS[type].colors,
+    type === 'soil',
+  );
+}
+
+// the nested-square "obstacle" look, without clearing a base underneath it
+// first — split out from drawObstacle so ground-atlas.ts can paint a floor
+// tile's own overlay as the base, then an obstacle's overlay on top of
+// that, letting the floor's texture peek through the obstacle's inset
+// border instead of being erased by drawObstacle's own DIRT clear. Takes
+// colors directly (not an ObstacleType) so it works for both OBSTACLE_DEFS
+// and FLOOR_DEFS without this module needing to know which table a caller
+// is drawing from.
+export function drawObstacleOverlay(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+  flecked: boolean,
+): void {
+  const { primary, secondary } = colors;
   const m1 = Math.max(1, Math.round(TILE * 0.09));
   const m2 = Math.max(1, Math.round(TILE * 0.16));
   ctx.fillStyle = secondary;
   ctx.fillRect(sx + m1, sy + m1, TILE - m1 * 2, TILE - m1 * 2);
   ctx.fillStyle = primary;
   ctx.fillRect(sx + m2, sy + m2, TILE - m2 * 2, TILE - m2 * 2);
+  if (flecked) {
+    ctx.fillStyle = SOIL_FLECK_COLOR;
+    for (const [ox, oy] of SOIL_FLECK_OFFSETS) {
+      ctx.fillRect(sx + ox, sy + oy, 1, 1);
+    }
+  }
 }
+
+// the tree trunk — narrower and shorter than the standard obstacle square
+// so it reads as a slim trunk rather than a same-shape copy of every other
+// obstacle: a fixed 12x12px outer square plus an 8x8px inner accent, both
+// centered on the tile — same centering formula as drawTreeCanopy, so it
+// comes out as a uniform 2px border all the way around.
+export function drawTreeTrunk(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  const { primary, secondary } = colors;
+  const outerW = 12,
+    outerH = 12;
+  const innerW = 8,
+    innerH = 8;
+  const oxm = (TILE - outerW) / 2,
+    oym = (TILE - outerH) / 2;
+  const ixm = (TILE - innerW) / 2,
+    iym = (TILE - innerH) / 2;
+  ctx.fillStyle = secondary;
+  ctx.fillRect(sx + oxm, sy + oym, outerW, outerH);
+  ctx.fillStyle = primary;
+  ctx.fillRect(sx + ixm, sy + iym, innerW, innerH);
+}
+
+// the tree canopy — a fixed 20x24px outer square (wider and noticeably
+// taller than its own tile, centered over it) so it reads as a broad
+// canopy rather than a same-size copy of the trunk below it, plus a
+// 16x20px inner accent — 4px less than the outer in each dimension, same
+// centering formula as the outer so it comes out as a uniform 2px border.
+export function drawTreeCanopy(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  const { primary, secondary } = colors;
+  const outerW = 20,
+    outerH = 24;
+  const innerW = 16,
+    innerH = 20;
+  const oxm = (TILE - outerW) / 2,
+    oym = (TILE - outerH) / 2;
+  const ixm = (TILE - innerW) / 2,
+    iym = (TILE - innerH) / 2;
+  ctx.fillStyle = secondary;
+  ctx.fillRect(sx + oxm, sy + oym, outerW, outerH);
+  ctx.fillStyle = primary;
+  ctx.fillRect(sx + ixm, sy + iym, innerW, innerH);
+}
+
+// flat, full-tile, single-color fill for the floor layer — unlike
+// drawObstacleOverlay's inset "bordered square" look (which reads as a
+// solid thing sitting on the ground), floor tiles are walkable, so they're
+// filled edge-to-edge with no border and no checkerboard, just a uniform
+// color per FloorType.
+export function drawFloorOverlay(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  ctx.fillStyle = colors.primary;
+  ctx.fillRect(sx, sy, TILE, TILE);
+}
+
+// a few pebble flecks baked into soil so it reads apart from other
+// obstacles/floor tiles that share its color pair — same fixed-offset-table
+// idea as SCATTERED_DOT_OFFSETS/ORE_DOT_OFFSETS below
+const SOIL_FLECK_OFFSETS: [number, number][] = [
+  [3, 4],
+  [11, 3],
+  [6, 9],
+  [12, 11],
+];
+const SOIL_FLECK_COLOR = '#8a6a44';
 
 // three fixed dots scattered around a tile, avoiding the dead center where
 // a regular item's centered square would render — used for a planted seed
@@ -88,7 +214,7 @@ export function drawFurnaceGlow(
   now: number,
   seed: number,
 ): void {
-  const { primary } = TILE_DEFS.furnace.colors;
+  const { primary } = OBSTACLE_DEFS.furnace.colors;
   // kept even so (TILE - outer) / 2 divides evenly — an odd outer would
   // round the left/right centering offsets unevenly by a pixel
   const outerRaw = Math.max(4, Math.round(TILE * 0.7));
@@ -206,8 +332,8 @@ export function drawBowIcon(
 }
 
 // draws whichever visual `type` uses as a loose item — shared by
-// state.groundItems and an in-progress furnace job (state.smelters) so a
-// job renders exactly like the item it started from, see render.ts
+// state.items and an in-progress furnace job (state.smelters) so a job
+// renders exactly like the item it started from, see render.ts
 export function drawItemIcon(
   ctx: CanvasRenderingContext2D,
   TILE: number,
@@ -239,6 +365,43 @@ export function drawItemIcon(
   ctx.fillRect(ix - 1, iy - 1, size + 2, size + 2);
   ctx.fillStyle = colors.primary;
   ctx.fillRect(ix, iy, size, size);
+}
+
+// one mark of the player's sand trail (see leaveFootprint in state/
+// state.ts) — a plain darkening overlay inset within the tile (not covering
+// it edge-to-edge), rather than a footprint-shaped print. `alpha` carries
+// the fade (render.ts computes it from the mark's age).
+export function drawStepDarken(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  alpha: number,
+): void {
+  const inset = Math.round(TILE * 0.2);
+  const size = TILE - inset * 2;
+  ctx.fillStyle = `rgba(20,20,20,${alpha})`;
+  ctx.fillRect(sx + inset, sy + inset, size, size);
+}
+
+// the water-tile counterpart to drawStepDarken above — same footprint mark
+// (render.ts picks one or the other per mark, based on whether the tile the
+// player stepped off of is OASIS or plain ground, see leaveFootprint in
+// state/state.ts), but a light foam-colored fill instead of a dark inset —
+// edge-to-edge (no inset) so consecutive marks along the player's path
+// touch and read as one continuous stream rather than separate dots.
+// `alpha` carries the fade (render.ts computes it from the mark's age,
+// same as drawStepDarken's, but on its own shorter timer — see
+// WAKE_FADE_MS in constants.ts).
+export function drawWake(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  alpha: number,
+): void {
+  ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+  ctx.fillRect(sx, sy, TILE, TILE);
 }
 
 export function drawSquareEntity(

@@ -1,85 +1,133 @@
 // Save/load: snapshots the player-driven parts of GameState to localStorage
 // so closing and reopening the tab picks up where it left off. `state.map`
 // isn't persisted — it's cheap to rebuild (buildMap is a pure function of
-// MAP_W/MAP_H) — but `state.tiles` is saved in full rather than replayed
-// from the seed, since it already reflects everything the player has dug up
-// or placed since world-gen ran. It's stored as a dense one-byte-per-cell
-// grid rather than a sparse [key, type][] list: a solid cave is mostly
-// "stone", so a per-cell byte (base64-encoded) runs an order of magnitude
-// smaller than repeating "stone" and an "x,y" string per tile. Transient
-// per-frame/interaction fields (paths, pending actions, attack targets,
-// timers keyed off the old performance.now() epoch) are deliberately
-// dropped on load and rebuilt fresh, the same way
+// MAP_W/MAP_H) — but `state.obstacles` is saved in full rather than
+// replayed from the seed, since it already reflects everything the player
+// has dug up or placed since world-gen ran. It's stored as a dense
+// one-byte-per-cell grid rather than a sparse [key, type][] list: a solid
+// cave is mostly "stone", so a per-cell byte (base64-encoded) runs an order
+// of magnitude smaller than repeating "stone" and an "x,y" string per cell.
+// Transient per-frame/interaction fields (paths, pending actions, attack
+// targets, timers keyed off the old performance.now() epoch) are
+// deliberately dropped on load and rebuilt fresh, the same way
 // createGameState/regenerateWorld initialize them.
+//
+// Note: the SaveData field names below (`tilesGrid`, `groundItems`) are the
+// serialized wire format and intentionally kept as-is even though the
+// TypeScript-side names they're built from (state.obstacles, state.items)
+// were renamed — renaming a persisted field would silently drop that data
+// out of every save already sitting in a user's localStorage.
 import type {
   Dir,
+  FloorType,
   GameRefs,
   GameState,
-  GroundItem,
+  Item,
   ItemType,
+  ObstacleType,
   PlantedSeed,
   Player,
   Smelter,
-  TileType,
+  Tree,
 } from '../types/types';
-import {
-  DUMMY_SPAWN_DX,
-  DUMMY_SPAWN_DY,
-  MAP_H,
-  MAP_W,
-  PLAYER_MAX_HP,
-  SPAWN_X,
-  SPAWN_Y,
-  TICK_MS,
-} from '../constants';
+import { MAP_H, MAP_W, PLAYER_MAX_HP, TICK_MS } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { buildGroundAtlas, buildWorldMapAtlas } from '../render/ground-atlas';
-import { makeDummyEnemy, makeEnemy } from '../entities/entities';
+import { makeEnemy } from '../entities/entities';
+import { makeTreeAt, paintOasis } from './state';
 
 const SAVE_KEY = 'project-survival-save-v1';
 
-// grid-cell byte id, 0 = no tile (open ground). Room for 255 tile types
-// before this needs to grow past one byte per cell.
-const TILE_TO_ID: Record<TileType, number> = {
+// grid-cell byte id, 0 = no obstacle (open ground). Room for 255 obstacle
+// types before this needs to grow past one byte per cell. id 5 is retired —
+// it used to be the old (dead, never actually placed) 'dirt' ObstacleType,
+// now reclaimed as the separate floor-layer FloorType below — and is
+// deliberately left unassigned rather than reused, so there's no ambiguity
+// decoding an old save.
+const OBSTACLE_TO_ID: Record<ObstacleType, number> = {
   stone: 1,
   soil: 2,
   furnace: 3,
   wood: 4,
+  fiber: 6,
+  tree: 7,
 };
-const ID_TO_TILE: (TileType | undefined)[] = [
+const ID_TO_OBSTACLE: (ObstacleType | undefined)[] = [
   undefined,
   'stone',
   'soil',
   'furnace',
   'wood',
+  undefined,
+  'fiber',
+  'tree',
 ];
 
-function encodeTilesGrid(tiles: Map<string, TileType>): string {
+function encodeObstacleGrid(obstacles: Map<string, ObstacleType>): string {
   const bytes = new Uint8Array(MAP_W * MAP_H);
-  for (const [key, type] of tiles) {
+  for (const [key, type] of obstacles) {
     const [x, y] = key.split(',').map(Number);
-    bytes[y * MAP_W + x] = TILE_TO_ID[type];
+    bytes[y * MAP_W + x] = OBSTACLE_TO_ID[type];
   }
   return bytesToBase64(bytes);
 }
 
-function decodeTilesGrid(b64: string): {
-  tiles: Map<string, TileType>;
+function decodeObstacleGrid(b64: string): {
+  obstacles: Map<string, ObstacleType>;
   furnaces: Map<string, { x: number; y: number }>;
+  trees: Map<string, Tree>;
 } {
   const bytes = base64ToBytes(b64);
-  const tiles = new Map<string, TileType>();
+  const obstacles = new Map<string, ObstacleType>();
   const furnaces = new Map<string, { x: number; y: number }>();
+  const trees = new Map<string, Tree>();
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
-      const type = ID_TO_TILE[bytes[y * MAP_W + x]];
+      const type = ID_TO_OBSTACLE[bytes[y * MAP_W + x]];
       if (!type) continue;
       const key = x + ',' + y;
-      tiles.set(key, type);
+      obstacles.set(key, type);
       if (type === 'furnace') furnaces.set(key, { x, y });
+      // a tree's hp isn't persisted — makeTreeAt always starts at full hp,
+      // so a half-chopped tree just resets on reload. Low-stakes (trees are
+      // rare, hp isn't precious state) and simpler than threading a second
+      // parallel hp grid through the save format for this first pass.
+      if (type === 'tree') trees.set(key, makeTreeAt(x, y));
     }
   }
-  return { tiles, furnaces };
+  return { obstacles, furnaces, trees };
+}
+
+// same dense one-byte-per-cell approach as the obstacle grid above, its own
+// id space starting fresh at 1 (independent of OBSTACLE_TO_ID's ids)
+const FLOOR_TO_ID: Record<FloorType, number> = {
+  dirt: 1,
+};
+const ID_TO_FLOOR: (FloorType | undefined)[] = [undefined, 'dirt'];
+
+function encodeFloorGrid(floor: Map<string, FloorType>): string {
+  const bytes = new Uint8Array(MAP_W * MAP_H);
+  for (const [key, type] of floor) {
+    const [x, y] = key.split(',').map(Number);
+    bytes[y * MAP_W + x] = FLOOR_TO_ID[type];
+  }
+  return bytesToBase64(bytes);
+}
+
+// `b64` is undefined when loading a save from before the floor layer
+// existed — an empty floor map is the correct, unambiguous default there
+function decodeFloorGrid(b64: string | undefined): Map<string, FloorType> {
+  const floor = new Map<string, FloorType>();
+  if (!b64) return floor;
+  const bytes = base64ToBytes(b64);
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const type = ID_TO_FLOOR[bytes[y * MAP_W + x]];
+      if (!type) continue;
+      floor.set(x + ',' + y, type);
+    }
+  }
+  return floor;
 }
 
 // chunked to stay well under the argument-count limit String.fromCharCode
@@ -101,10 +149,10 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
-// ground items are sparse (a couple hundred scattered across thousands of
-// cells at most), so a dense per-cell grid like the tile grid above would
-// waste space on all the empty cells — instead each item is 3 plain numbers
-// (x, y, item-type id) flattened into one array, which drops the repeated
+// items are sparse (a couple hundred scattered across thousands of cells at
+// most), so a dense per-cell grid like the obstacle grid above would waste
+// space on all the empty cells — instead each item is 3 plain numbers (x,
+// y, item-type id) flattened into one array, which drops the repeated
 // "x"/"y"/"type" object keys and the redundant "x,y" string key that the
 // old [key, {x,y,type}][] shape paid for on every entry
 const ITEM_TO_ID: Record<ItemType, number> = {
@@ -125,7 +173,7 @@ const ID_TO_ITEM: (ItemType | undefined)[] = [
   'bow',
 ];
 
-function encodeGroundItems(items: Map<string, GroundItem>): number[] {
+function encodeItems(items: Map<string, Item>): number[] {
   const flat: number[] = [];
   for (const item of items.values()) {
     flat.push(item.x, item.y, ITEM_TO_ID[item.type]);
@@ -133,8 +181,8 @@ function encodeGroundItems(items: Map<string, GroundItem>): number[] {
   return flat;
 }
 
-function decodeGroundItems(flat: number[]): Map<string, GroundItem> {
-  const items = new Map<string, GroundItem>();
+function decodeItems(flat: number[]): Map<string, Item> {
+  const items = new Map<string, Item>();
   for (let i = 0; i < flat.length; i += 3) {
     const x = flat[i],
       y = flat[i + 1];
@@ -174,6 +222,9 @@ interface SaveData {
   // epoch
   tick: number;
   tilesGrid: string;
+  // absent on saves from before the floor layer existed — decodeFloorGrid
+  // treats that as an empty floor map
+  floorGrid?: string;
   groundItems: number[];
   seeds: [string, PlantedSeed][];
   smelters: [string, Smelter][];
@@ -186,8 +237,9 @@ export function saveGame(state: GameState): void {
   const data: SaveData = {
     seed: state.seed,
     tick: state.tick,
-    tilesGrid: encodeTilesGrid(state.tiles),
-    groundItems: encodeGroundItems(state.groundItems),
+    tilesGrid: encodeObstacleGrid(state.obstacles),
+    floorGrid: encodeFloorGrid(state.floor),
+    groundItems: encodeItems(state.items),
     seeds: Array.from(state.seeds.entries()),
     smelters: Array.from(state.smelters.entries()),
     // the training dummy (Infinity hp, doesn't survive JSON) is re-created
@@ -244,7 +296,9 @@ export function loadGame(refs: GameRefs): GameState | null {
   }
 
   const map = buildMap(MAP_W, MAP_H);
-  const { tiles, furnaces } = decodeTilesGrid(data.tilesGrid);
+  paintOasis(map, data.seed);
+  const { obstacles, furnaces, trees } = decodeObstacleGrid(data.tilesGrid);
+  const floor = decodeFloorGrid(data.floorGrid);
 
   const sp = data.player;
   const player: Player = {
@@ -267,6 +321,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     attacked: false,
     attackTarget: null,
     nextAttackAt: 0,
+    nextMoveAt: 0,
     hp: sp.hp,
     maxHp: sp.maxHp ?? PLAYER_MAX_HP,
     flashUntil: 0,
@@ -281,9 +336,8 @@ export function loadGame(refs: GameRefs): GameState | null {
     e.maxHp = se.maxHp;
     return e;
   });
-  enemies.push(
-    makeDummyEnemy(SPAWN_X + DUMMY_SPAWN_DX, SPAWN_Y + DUMMY_SPAWN_DY),
-  );
+  // the training dummy is disabled for now — see spawnEnemies in
+  // entities/entities.ts for the same call-site removal
 
   const state: GameState = {
     refs,
@@ -292,15 +346,18 @@ export function loadGame(refs: GameRefs): GameState | null {
     seed: data.seed,
     rng: mulberry32(data.seed),
     map,
-    tiles,
-    groundItems: decodeGroundItems(data.groundItems),
+    floor,
+    obstacles,
+    items: decodeItems(data.groundItems),
     seeds: new Map(data.seeds),
     smelters: new Map(data.smelters),
     furnaces,
+    trees,
     enemies,
     player,
     floatingTexts: [],
     projectiles: [],
+    footprints: [],
     zoomIndex: data.zoomIndex,
     VP_W: 0,
     VP_H: 0,
@@ -308,7 +365,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     hoveredTile: null,
   };
 
-  buildGroundAtlas(refs, map, tiles);
-  buildWorldMapAtlas(refs, tiles);
+  buildGroundAtlas(refs, map, floor, obstacles);
+  buildWorldMapAtlas(refs, map, floor, obstacles);
   return state;
 }

@@ -1,4 +1,10 @@
-import type { CarryType, ItemType, TileType, ZoomLevel } from './types/types';
+import type {
+  CarryType,
+  FloorType,
+  ItemType,
+  ObstacleType,
+  ZoomLevel,
+} from './types/types';
 
 export const TILE = 16;
 export const MAP_W = 300;
@@ -27,64 +33,142 @@ export const WORLD_TILE = 4;
 // ---- boulder-structure resources: buildStones' noise pass carves the
 // wasteland into separated solid-stone "structures" (see worldgen.ts's
 // CAVE_PRESET comment). Every structure at or above MIN_STRUCTURE_SIZE tiles
-// gets a full scavengeable resource kit embedded in it (see buildWorldTiles
-// in state/state.ts); anything smaller stays plain undecorated stone.
-// First-pass balance numbers. ----
+// gets ore rolled independently on each of its interior cells (worldgen.ts's
+// interiorCells, so it never sits at the structure's edge) at ORE_SPAWN_CHANCE
+// (see buildWorldLayers in state/state.ts); anything smaller stays plain
+// undecorated stone. First-pass balance numbers. ----
 export const MIN_STRUCTURE_SIZE = 15; // stone tiles; below this, no resources
-export const STRUCTURE_ORE_COUNT = 3; // one sword's ingots + 1 spare
-export const STRUCTURE_WOOD_COUNT = 1; // one bow
-export const STRUCTURE_SOIL_COUNT = 1; // one farming plot
-export const STRUCTURE_ENERGY_SEED_DENSITY = 1 / 12; // ~1 food per 12 stone tiles
-export const STRUCTURE_MIN_ENERGY_SEED = 2; // even a small qualifying structure gets some food
+export const ORE_SPAWN_CHANCE = 0.05; // per interior stone tile
 // salts the resource-placement RNG so it's independent of both the terrain
 // noise's own seed usage and gameplay's state.rng consumption order
 export const RESOURCE_PLACEMENT_SALT = 0x9e3779b9;
 
-// ---- tile defs: the grid layer (solid, atlas-baked). pickable is checked
-// by doPickup — every current tile is pickable, but the flag exists so a
-// future non-pickable solid type (e.g. a boundary wall) has somewhere to
-// say so. allowGroundItem marks whether the ground-item layer can also be
-// occupied at the tile's cell (soil does, so a ground item — a planted
+// ---- oasis: a single small circular patch of background ground painted a
+// different color, placed at a fixed distance from spawn in a random
+// (seed-derived) direction — purely cosmetic, see OASIS in worldgen.ts and
+// paintOasis in state/state.ts ----
+export const OASIS_DISTANCE_TILES = 20;
+export const OASIS_RADIUS = 4; // ~49-tile circular patch
+export const OASIS_PLACEMENT_SALT = 0x1b873593; // distinct from RESOURCE_PLACEMENT_SALT
+
+// ---- oasis vegetation: a fixed-distance ring band around the oasis's own
+// (wobbly) cell set, same "fixed distance, not noise-driven" philosophy as
+// the oasis itself — see buildVegetationRing in worldgen.ts. Bushes
+// ('fiber' obstacles) hug the water closely and densely; trees ('wood'
+// obstacles, reusing the existing ObstacleType rather than adding a new
+// one) sit further out and sparser. First-pass balance numbers, same spirit as
+// ORE_SPAWN_CHANCE ----
+export const VEGETATION_PLACEMENT_SALT = 0x2545f491; // distinct from the other placement salts
+export const BUSH_RING_MIN = 1;
+export const BUSH_RING_MAX = 2;
+export const BUSH_SPAWN_CHANCE = 0.15;
+export const TREE_RING_MIN = 2;
+export const TREE_RING_MAX = 5;
+export const TREE_SPAWN_CHANCE = 0.05;
+
+// ---- obstacle defs: the grid layer (solid, atlas-baked). pickable is
+// checked by doPickup — every current obstacle is pickable, but the flag
+// exists so a future non-pickable solid type (e.g. a boundary wall) has
+// somewhere to say so. allowItem marks whether the item layer can also be
+// occupied at the obstacle's cell (soil does, so an item — a planted
 // crop — can sit on top of it; stone/ore don't) ----
-export const TILE_DEFS: Record<
-  TileType,
+export const OBSTACLE_DEFS: Record<
+  ObstacleType,
   {
     solid: boolean;
     pickable: boolean;
-    allowGroundItem: boolean;
+    allowItem: boolean;
     colors: { primary: string; secondary: string };
   }
 > = {
   stone: {
     solid: true,
     pickable: true,
-    allowGroundItem: false,
+    allowItem: false,
     colors: { primary: '#8a8478', secondary: '#5e594e' },
   },
   soil: {
     solid: true,
     pickable: true,
-    allowGroundItem: true,
+    allowItem: true,
     colors: { primary: '#6b4a30', secondary: '#43301f' },
   },
-  // built by combining two stone tiles (see combine.ts) — not part of
-  // procedural generation. allowGroundItem lets any item be dumped
-  // straight onto it, same as soil (see systems/smelting.ts)
+  // built by combining two stone obstacles (see combine.ts) — not part of
+  // procedural generation. allowItem lets any item be dumped straight onto
+  // it, same as soil (see systems/smelting.ts)
   furnace: {
     solid: true,
     pickable: true,
-    allowGroundItem: true,
+    allowItem: true,
     colors: { primary: '#c65a2e', secondary: '#5a2c17' },
   },
   // a diggable obstacle like stone/soil, not yet consumed by any recipe —
-  // seeded near spawn (see buildTiles in state/state.ts) so it's
+  // seeded near spawn (see buildWorldLayers in state/state.ts) so it's
   // visible/testable ahead of the combine recipe that will use it (a
   // spear or similar, held alongside ingot)
   wood: {
     solid: true,
     pickable: true,
-    allowGroundItem: false,
+    allowItem: false,
     colors: { primary: '#a9773f', secondary: '#6b4c22' },
+  },
+  // scrub/bush vegetation scattered in a ring around the oasis (see
+  // buildVegetationRing in worldgen.ts) — solid so it reads as a real
+  // obstacle to walk around, pickable like every other obstacle. Clearing
+  // one reveals the 'dirt' floor tile placed underneath it at world-gen
+  // time (see buildWorldLayers in state/state.ts).
+  fiber: {
+    solid: true,
+    pickable: true,
+    allowItem: false,
+    colors: { primary: '#5a7a3a', secondary: '#33471f' },
+  },
+  // a 2-tall tree: this entry is only the trunk/base cell, the sole thing
+  // that occupies state.obstacles and collides — the canopy is a per-frame,
+  // y-sorted visual one tile north of it with no data-layer presence of its
+  // own (see TREE_CANOPY_COLORS below and the tree pass in render.ts), so
+  // that tile stays walkable. Trunk colors reuse wood's palette (it's
+  // literally a trunk); scattered in the oasis vegetation ring alongside
+  // fiber (see buildVegetationRing in worldgen.ts), placed as its own
+  // ObstacleType rather than reusing 'wood' — see buildWorldLayers in
+  // state/state.ts. Not directly pickable — a tree has to be chopped down
+  // via combat (see TREE_MAX_HP, fellTree in systems/combat.ts) first,
+  // which swaps this cell for a plain 'wood' obstacle (pickable: true).
+  tree: {
+    solid: true,
+    pickable: false,
+    allowItem: false,
+    colors: { primary: '#a9773f', secondary: '#6b4c22' },
+  },
+};
+
+// hp a tree has before fellTree (systems/combat.ts) swaps it for a plain
+// 'wood' obstacle — first-pass balance number, double ENEMY_MAX_HP so
+// chopping one down takes noticeably more hits than fighting a basic enemy
+export const TREE_MAX_HP = 20;
+
+// canopy color pair for the 2-tall tree above — render-only, not part of
+// OBSTACLE_DEFS since the canopy has no collision/pickup identity of its
+// own (see the tree pass in render.ts). A fuller forest green, kept
+// visually distinct from fiber's scrub green.
+export const TREE_CANOPY_COLORS = {
+  primary: '#3f7a3a',
+  secondary: '#234d20',
+};
+
+// ---- floor defs: the layer beneath obstacles (see FloorType in types.ts)
+// — walkable ground material an obstacle or item can sit on top of. No
+// `solid` field like OBSTACLE_DEFS: everything here is walkable by
+// definition, so nothing ever needs to check it. Currently placed only
+// under the oasis's vegetation ring (see buildWorldLayers in state/state.ts),
+// reusing the same brown as soil/stone-cluster dirt on purpose ----
+export const FLOOR_DEFS: Record<
+  FloorType,
+  { pickable: boolean; colors: { primary: string; secondary: string } }
+> = {
+  dirt: {
+    pickable: true,
+    colors: { primary: '#6b4a30', secondary: '#43301f' },
   },
 };
 
@@ -120,8 +204,8 @@ export const ITEM_DEFS: Record<
   },
   // crafted from wood + ingot (see RECIPES in systems/combine.ts) — see
   // WEAPON_DEFS below for its ranged attack stats. Shares wood's colors
-  // (see TILE_DEFS.wood above) rather than ingot's, since the shaft/limb is
-  // what reads visually, not the arrowhead
+  // (see OBSTACLE_DEFS.wood above) rather than ingot's, since the
+  // shaft/limb is what reads visually, not the arrowhead
   bow: {
     colors: { primary: '#a9773f', secondary: '#6b4c22' },
   },
@@ -145,11 +229,12 @@ export const ORE_SMELT_TICKS = 20; // ~5s at the current TICK_MS
 export const ITEM_MELT_TICKS = 8; // ~2s at the current TICK_MS
 
 // looks up the primary color for anything the player can carry, whichever
-// def table (TILE_DEFS or ITEM_DEFS) it belongs to
-export function carryColor(kind: TileType | ItemType): string {
-  return kind in TILE_DEFS
-    ? TILE_DEFS[kind as TileType].colors.primary
-    : ITEM_DEFS[kind as ItemType].colors.primary;
+// def table (OBSTACLE_DEFS, FLOOR_DEFS, or ITEM_DEFS) it belongs to
+export function carryColor(kind: CarryType): string {
+  if (kind in OBSTACLE_DEFS)
+    return OBSTACLE_DEFS[kind as ObstacleType].colors.primary;
+  if (kind in FLOOR_DEFS) return FLOOR_DEFS[kind as FloorType].colors.primary;
+  return ITEM_DEFS[kind as ItemType].colors.primary;
 }
 
 // ---- player: fixed worker+soldier combined role — picks up/places
@@ -169,6 +254,12 @@ export const PLAYER_ATK_DAMAGE = 3;
 // regardless of frame timing/hitches instead of drifting like a
 // performance.now() comparison would
 export const PLAYER_ATK_COOLDOWN_TICKS = 4;
+// ticks a step onto the oasis's water takes before the next step is
+// allowed, vs. the normal 1 tick per step everywhere else — see
+// Player.nextMoveAt (types.ts) and tryPlayerStep (systems/player-actions.ts).
+// Twice the normal pace, so wading through the water takes twice as long in
+// real time without changing the fixed-tick simulation rate itself.
+export const PLAYER_WATER_MOVE_TICKS = 2;
 
 // a weapon is "equipped" simply by being held (see attemptPlayerAttack in
 // systems/player-actions.ts) — no separate equip slot, so wielding one
@@ -194,6 +285,24 @@ export function weaponRange(held: CarryType | null): number {
   const weapon = held ? WEAPON_DEFS[held as ItemType] : undefined;
   return weapon?.range ?? 1;
 }
+// ---- sand trail: the tile the player steps off of gets a dark overlay (see
+// leaveFootprint in state/state.ts) that fades out over FOOTPRINT_FADE_MS
+// (render.ts). Recorded on the tile being left, not the one being walked
+// onto, so the mark never sits directly under the player. FOOTPRINT_MAX
+// bounds the backing array so a long walk doesn't grow it forever — oldest
+// marks are dropped first, same as they'd have faded out anyway. ----
+export const FOOTPRINT_FADE_MS = 3000;
+export const FOOTPRINT_MAX = 400;
+export const FOOTPRINT_MAX_ALPHA = 0.18;
+// same role as FOOTPRINT_MAX_ALPHA/FOOTPRINT_FADE_MS above, but for the
+// pale wake mark a footprint on water renders as instead (see drawWake in
+// rendering.ts). WAKE_MAX_ALPHA is higher than the sand darken since a
+// light mark needs more opacity to read clearly against the water;
+// WAKE_FADE_MS is shorter so the trailing stream reads as motion right
+// behind the player rather than lingering.
+export const WAKE_MAX_ALPHA = 0.35;
+export const WAKE_FADE_MS = 700;
+
 // hp spent per tile the player steps onto, however the step was triggered
 // (keyboard, click-to-move, or auto-pathing toward an attack target)
 export const PLAYER_MOVE_HP_COST = 1;
