@@ -101,7 +101,7 @@ export const OBSTACLE_DEFS: Record<
   },
   // built by combining two stone obstacles (see combine.ts) — not part of
   // procedural generation. allowItem lets any item be dumped straight onto
-  // it, same as soil (see systems/smelting.ts)
+  // it (see systems/smelting.ts)
   furnace: {
     solid: true,
     pickable: true,
