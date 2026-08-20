@@ -1,26 +1,36 @@
 // Player action resolution: movement, picking up/placing obstacles and
 // food, and attacking enemies. Raw key tracking (which keys are currently
 // held) lives in input/player-input.ts.
-import type { Dir, GameState, HudRefs, ItemType, Point } from '../types/types';
+import type {
+  Dir,
+  FloorType,
+  GameState,
+  HudRefs,
+  ItemType,
+  Point,
+} from '../types/types';
 import {
   carryColor,
   ENERGY_HEAL_AMOUNT,
   ENERGY_SEED_GROW_TICKS,
+  FLOOR_DEFS,
+  OBSTACLE_DEFS,
   PLAYER_ATK_COOLDOWN_TICKS,
   PLAYER_ATK_DAMAGE,
   PLAYER_WATER_MOVE_TICKS,
   TICK_MS,
-  TILE_DEFS,
   weaponRange,
   WEAPON_DEFS,
 } from '../constants';
 import {
+  floorAt,
   isEnemyAt,
   leaveFootprint,
   occupantAt,
-  openForGroundItem,
+  openForItem,
+  setFloor,
+  setObstacle,
   setOccupant,
-  setTile,
   spawnFloatingText,
   terrainWalkable,
 } from '../state/state';
@@ -34,6 +44,7 @@ import {
 } from './pathfinding';
 import {
   damageEnemy,
+  damageTree,
   fireProjectile,
   spendAttackHp,
   spendMoveHp,
@@ -143,12 +154,12 @@ export function doPickup(
   const { player } = state;
   const key = x + ',' + y;
 
-  // a ground item (e.g. energy a seed grew) sits on top of the tile layer,
-  // so it takes priority: picking up harvests the item and leaves the tile
+  // an item (e.g. energy a seed grew) sits on top of the obstacle layer, so
+  // it takes priority: picking up harvests the item and leaves the obstacle
   // (and any seed underneath it) behind
-  const item = state.groundItems.get(key);
+  const item = state.items.get(key);
   if (item) {
-    state.groundItems.delete(key);
+    state.items.delete(key);
     player.held = item.type;
     // harvesting the energy a seed produced restarts its grow timer, so
     // the same seed keeps producing as long as it's kept picked
@@ -197,12 +208,33 @@ export function doPickup(
     return;
   }
 
-  const tile = state.tiles.get(key);
-  if (!tile || !TILE_DEFS[tile].pickable) return;
-  setTile(state, x, y, null);
-  player.held = tile;
-  spawnFloatingText(state, player, 'picked up ' + tile, carryColor(tile));
-  updateHud(state, hud);
+  // an obstacle here — pickable or not — is the topmost thing at this
+  // cell, so it's the end of the line either way: a non-pickable obstacle
+  // (e.g. a tree) blocks reaching the floor underneath it, same as a
+  // pickable one leaving the floor exposed only once it's actually removed
+  const obstacle = state.obstacles.get(key);
+  if (obstacle) {
+    if (OBSTACLE_DEFS[obstacle].pickable) {
+      setObstacle(state, x, y, null);
+      player.held = obstacle;
+      spawnFloatingText(
+        state,
+        player,
+        'picked up ' + obstacle,
+        carryColor(obstacle),
+      );
+      updateHud(state, hud);
+    }
+    return;
+  }
+
+  const floor = floorAt(state, x, y);
+  if (floor && FLOOR_DEFS[floor].pickable) {
+    setFloor(state, x, y, null);
+    player.held = floor;
+    spawnFloatingText(state, player, 'picked up ' + floor, carryColor(floor));
+    updateHud(state, hud);
+  }
 }
 
 export function doPlace(
@@ -216,15 +248,27 @@ export function doPlace(
     return;
   const held = player.held;
 
-  // soil and furnace both allow a ground item to drop straight onto them
-  // without needing an empty cell or a combine recipe. A furnace dump is
-  // consumed — what's left depends on the item, see systems/smelting.ts.
-  // On soil, an energySeed gets planted (tracked separately, see
-  // systems/farming.ts) and anything else just sits there as a plain loose
-  // item, same as any other ground item.
-  if (!(held in TILE_DEFS) && openForGroundItem(state, x, y)) {
+  // a held floor tile is placed onto the floor layer, not the
+  // obstacle/item layers — checked first since 'dirt' isn't a key in
+  // OBSTACLE_DEFS, and falling through to the generic item-drop branch
+  // below would wrongly stash it in state.items as a fake ItemType
+  if (held in FLOOR_DEFS) {
+    if (floorAt(state, x, y)) return; // already has a floor tile, stays in hand
+    setFloor(state, x, y, held as FloorType);
+    spawnFloatingText(state, player, 'placed ' + held, carryColor(held));
+    player.held = null;
+    updateHud(state, hud);
+    return;
+  }
+
+  // soil and furnace both allow an item to drop straight onto them without
+  // needing an empty cell or a combine recipe. A furnace dump is consumed —
+  // what's left depends on the item, see systems/smelting.ts. On soil, an
+  // energySeed gets planted (tracked separately, see systems/farming.ts)
+  // and anything else just sits there as a plain loose item.
+  if (!(held in OBSTACLE_DEFS) && openForItem(state, x, y)) {
     const item = held as ItemType;
-    if (state.tiles.get(x + ',' + y) === 'furnace') {
+    if (state.obstacles.get(x + ',' + y) === 'furnace') {
       const outcome = dumpInFurnace(state, x, y, item);
       const text =
         outcome === 'smelting'
@@ -242,7 +286,7 @@ export function doPlace(
       if (item === 'energySeed') {
         plantSeed(state, x, y);
       } else {
-        state.groundItems.set(x + ',' + y, { x, y, type: item });
+        state.items.set(x + ',' + y, { x, y, type: item });
       }
       spawnFloatingText(state, player, 'placed ' + item, '#ecdfc4');
     }
@@ -308,7 +352,7 @@ export function tryPlaceAt(
   const { player } = state;
   if (!terrainWalkable(state, x, y) || !player.held) return;
   const dropsOnSoil =
-    !(player.held in TILE_DEFS) && openForGroundItem(state, x, y);
+    !(player.held in OBSTACLE_DEFS) && openForItem(state, x, y);
   if (!dropsOnSoil) {
     const target = occupantAt(state, x, y);
     if (target !== null && tryCombine(player.held, target) === null) return;
@@ -331,7 +375,7 @@ export function handlePlayerAttacked(state: GameState): void {
   state.player.attacked = false;
 }
 
-// ---- attack a targeted enemy ----
+// ---- attack a targeted enemy or tree ----
 export function attemptPlayerAttack(
   state: GameState,
   hud: HudRefs,
@@ -356,8 +400,10 @@ export function attemptPlayerAttack(
   // of sight) before calling this, so no geometry check is needed here.
   if (weaponRange(player.held) > 1) {
     fireProjectile(state, player, t, damage, now);
-  } else {
+  } else if (t.kind === 'enemy') {
     damageEnemy(state, hud, t, damage, now);
+  } else {
+    damageTree(state, hud, t, damage, now);
   }
   spendAttackHp(state, hud);
 }

@@ -6,6 +6,7 @@ import type {
   GameState,
   HudRefs,
   Player,
+  Tree,
 } from '../types/types';
 import {
   MAP_H,
@@ -18,6 +19,7 @@ import {
 } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { makeEnemy } from '../entities/entities';
+import { makeTreeAt } from '../state/state';
 
 // inert stub — safe to dereference only because tests that reach code paths
 // touching state.refs (combat.ts's death path) mock render/ground-atlas.ts,
@@ -95,6 +97,14 @@ export function createTestEnemy(
   return { ...makeEnemy(x, y), ...overrides };
 }
 
+export function createTestTree(
+  x: number,
+  y: number,
+  overrides?: Partial<Tree>,
+): Tree {
+  return { ...makeTreeAt(x, y), ...overrides };
+}
+
 export function createTestGameState(overrides?: Partial<GameState>): GameState {
   const seed = 1;
   return {
@@ -103,11 +113,13 @@ export function createTestGameState(overrides?: Partial<GameState>): GameState {
     seed,
     rng: mulberry32(seed),
     map: buildMap(MAP_W, MAP_H),
-    tiles: new Map(),
-    groundItems: new Map(),
+    floor: new Map(),
+    obstacles: new Map(),
+    items: new Map(),
     seeds: new Map(),
     smelters: new Map(),
     furnaces: new Map(),
+    trees: new Map(),
     enemies: [],
     player: createTestPlayer(),
     floatingTexts: [],

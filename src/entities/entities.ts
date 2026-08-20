@@ -5,8 +5,6 @@
 // instead) so there's no import cycle between the two.
 import type { Actor, Dir, Enemy, GameState, Point } from '../types/types';
 import {
-  DUMMY_SPAWN_DX,
-  DUMMY_SPAWN_DY,
   ENEMY_COUNT,
   ENEMY_MAX_HP,
   ENEMY_SPAWN_MIN_DIST,
@@ -21,6 +19,7 @@ import { randomOpenTile } from '../state/state';
 
 export function makeEnemy(x: number, y: number): Enemy {
   return {
+    kind: 'enemy',
     tileX: x,
     tileY: y,
     px: x * TILE,
@@ -65,9 +64,8 @@ export function makeDummyEnemy(x: number, y: number): Enemy {
 
 export function spawnEnemies(state: GameState): void {
   state.enemies.length = 0;
-  state.enemies.push(
-    makeDummyEnemy(SPAWN_X + DUMMY_SPAWN_DX, SPAWN_Y + DUMMY_SPAWN_DY),
-  );
+  // the training dummy is disabled for now — makeDummyEnemy is left intact
+  // below so it's a one-line re-add, not a re-implementation
   for (let i = 0; i < ENEMY_COUNT; i++) {
     let spot: Point | null = null;
     for (let tries = 0; tries < 30; tries++) {

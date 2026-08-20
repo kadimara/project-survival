@@ -122,7 +122,7 @@ export function fbm(
 // point — solid stone is deliberately rare and forms separated
 // boulder-cluster "structures" scattered across an otherwise open walkable
 // wasteland, so most resources (embedded in those clusters, see
-// buildWorldTiles in state/state.ts) mean seeking out and digging into a
+// buildWorldLayers in state/state.ts) mean seeking out and digging into a
 // structure rather than just walking up to them. See buildStones' spawn-
 // safety carve below for why the player never spawns inside one.
 export const CAVE_PRESET = {
@@ -238,7 +238,7 @@ export function findRegions(
 // Structures are maximal connected components (see findRegions above), so
 // checking a neighbor against the global `members` set is equivalent to
 // checking it against the structure's own cells: any neighboring member
-// cell is necessarily part of the same structure. Used by buildWorldTiles
+// cell is necessarily part of the same structure. Used by buildWorldLayers
 // in state/state.ts to keep resource placement away from the edge.
 export function interiorCells(structure: Cell[], members: Set<string>): Cell[] {
   return structure.filter(({ x, y }) => {
@@ -309,4 +309,63 @@ export function buildOasisPatch(
     }
   }
   return cells;
+}
+
+// scatters vegetation in a ring band around the oasis's actual (wobbly)
+// cell set, rather than assuming a clean circle — a multi-source 4-
+// directional BFS out from every oasis cell gives each nearby cell its grid
+// distance to the *nearest* oasis cell, so the band hugs the pond's real
+// noise-perturbed boundary the same way buildStones' spawn-safety carve
+// hugs a fixed point (see SPAWN_SAFETY_R above). Bushes are checked first
+// and claim their ring at the given chance; trees are only rolled on cells
+// bushes didn't take, so a cell is never claimed by both.
+export function buildVegetationRing(
+  rng: Rng,
+  oasis: Set<string>,
+  mapW: number,
+  mapH: number,
+  bush: { min: number; max: number; chance: number },
+  tree: { min: number; max: number; chance: number },
+): { bushes: Set<string>; trees: Set<string> } {
+  const maxRing = Math.max(bush.max, tree.max);
+  const dist = new Map<string, number>();
+  let frontier: Cell[] = [];
+  for (const key of oasis) {
+    const [x, y] = key.split(',').map(Number);
+    dist.set(key, 0);
+    frontier.push({ x, y });
+  }
+  const dirs: [number, number][] = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (let d = 1; d <= maxRing; d++) {
+    const next: Cell[] = [];
+    for (const { x, y } of frontier) {
+      for (const [dx, dy] of dirs) {
+        const nx = x + dx,
+          ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= mapW || ny >= mapH) continue;
+        const nk = nx + ',' + ny;
+        if (dist.has(nk)) continue;
+        dist.set(nk, d);
+        next.push({ x: nx, y: ny });
+      }
+    }
+    frontier = next;
+  }
+
+  const bushes = new Set<string>();
+  const trees = new Set<string>();
+  for (const [key, d] of dist) {
+    if (d === 0) continue; // an oasis cell itself, not a candidate
+    if (d >= bush.min && d <= bush.max && rng() < bush.chance) {
+      bushes.add(key);
+    } else if (d >= tree.min && d <= tree.max && rng() < tree.chance) {
+      trees.add(key);
+    }
+  }
+  return { bushes, trees };
 }

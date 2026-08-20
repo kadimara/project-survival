@@ -13,6 +13,7 @@ import {
 } from './constants';
 import {
   createGameState,
+  floorAt,
   isSolid,
   occupantAt,
   regenerateWorld,
@@ -170,6 +171,16 @@ export function initColonyGame(): void {
       return;
     }
 
+    // same precedence as an enemy hit above — a tree always means chop it,
+    // even over placing a held item on it
+    const treeHit = state.trees.get(x + ',' + y);
+    if (treeHit) {
+      player.attackTarget = treeHit;
+      player.pendingAction = null;
+      player.path = [];
+      return;
+    }
+
     // holding ctrl forces a plain walk to the clicked tile, bypassing
     // pickup/place so the player can pass through busy areas without
     // interacting with what's there
@@ -178,7 +189,7 @@ export function initColonyGame(): void {
         tryPlaceAt(state, x, y, walkableFn);
         return;
       }
-      if (occupantAt(state, x, y)) {
+      if (occupantAt(state, x, y) || floorAt(state, x, y)) {
         trySelectPickup(state, x, y, walkableFn);
         return;
       }

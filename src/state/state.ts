@@ -6,14 +6,19 @@
 // direction only).
 import type {
   CarryType,
+  FloorType,
   GameRefs,
   GameState,
-  GroundItem,
+  Item,
   ItemType,
+  ObstacleType,
   Point,
-  TileType,
+  Tree,
 } from '../types/types';
 import {
+  BUSH_RING_MAX,
+  BUSH_RING_MIN,
+  BUSH_SPAWN_CHANCE,
   FOOTPRINT_MAX,
   INITIAL_SEED,
   MAP_H,
@@ -22,6 +27,7 @@ import {
   OASIS_DISTANCE_TILES,
   OASIS_PLACEMENT_SALT,
   OASIS_RADIUS,
+  OBSTACLE_DEFS,
   ORE_SPAWN_CHANCE,
   PLAYER_MAX_HP,
   RESOURCE_PLACEMENT_SALT,
@@ -29,12 +35,17 @@ import {
   SPAWN_Y,
   TICK_MS,
   TILE,
-  TILE_DEFS,
+  TREE_MAX_HP,
+  TREE_RING_MAX,
+  TREE_RING_MIN,
+  TREE_SPAWN_CHANCE,
+  VEGETATION_PLACEMENT_SALT,
 } from '../constants';
 import {
   buildMap,
   buildOasisPatch,
   buildStones,
+  buildVegetationRing,
   findRegions,
   interiorCells,
   mulberry32,
@@ -58,35 +69,110 @@ export function terrainWalkable(
 }
 
 export function isSolid(state: GameState, x: number, y: number): boolean {
-  const t = state.tiles.get(x + ',' + y);
-  return t !== undefined && TILE_DEFS[t].solid;
+  const o = state.obstacles.get(x + ',' + y);
+  return o !== undefined && OBSTACLE_DEFS[o].solid;
 }
 
-export function setTile(
+// a fresh, full-hp tree at (x,y) — used both by world-gen (buildWorldLayers
+// below, via setObstacle) and by persistence.ts's decodeObstacleGrid.
+// Defined here rather than in entities/entities.ts (which has the
+// equivalent makeEnemy/makeDummyEnemy factories) so this module doesn't
+// need to import entities.ts and reintroduce the import cycle the module
+// layout deliberately avoids (entities.ts already imports one-way from
+// this file). A tree never moves, so px/py are just a static snapshot of
+// tileX/tileY * TILE, not kept in sync by anything.
+export function makeTreeAt(x: number, y: number): Tree {
+  return {
+    kind: 'tree',
+    tileX: x,
+    tileY: y,
+    px: x * TILE,
+    py: y * TILE,
+    hp: TREE_MAX_HP,
+    maxHp: TREE_MAX_HP,
+    flashUntil: 0,
+  };
+}
+
+export function setObstacle(
   state: GameState,
   x: number,
   y: number,
-  type: TileType | null,
+  type: ObstacleType | null,
 ): void {
   const key = x + ',' + y;
   if (type) {
-    state.tiles.set(key, type);
+    state.obstacles.set(key, type);
   } else {
-    state.tiles.delete(key);
+    state.obstacles.delete(key);
   }
   if (type === 'furnace') state.furnaces.set(key, { x, y });
   else state.furnaces.delete(key);
-  patchGroundAtlasTile(state.refs, state.map, x, y, state.tiles.get(key));
-  patchWorldMapAtlasTile(state.refs, state.map, x, y, state.tiles.get(key));
+  if (type === 'tree') state.trees.set(key, makeTreeAt(x, y));
+  else state.trees.delete(key);
+  patchGroundAtlasTile(
+    state.refs,
+    state.map,
+    state.floor,
+    x,
+    y,
+    state.obstacles.get(key),
+  );
+  patchWorldMapAtlasTile(
+    state.refs,
+    state.map,
+    state.floor,
+    x,
+    y,
+    state.obstacles.get(key),
+  );
+}
+
+export function floorAt(
+  state: GameState,
+  x: number,
+  y: number,
+): FloorType | undefined {
+  return state.floor.get(x + ',' + y);
+}
+
+// mirrors setObstacle for the floor layer — floor never affects furnaces or
+// solidity (see FLOOR_DEFS's comment in constants.ts), so this is just the
+// map mutation plus the same atlas repatch.
+export function setFloor(
+  state: GameState,
+  x: number,
+  y: number,
+  type: FloorType | null,
+): void {
+  const key = x + ',' + y;
+  if (type) state.floor.set(key, type);
+  else state.floor.delete(key);
+  patchGroundAtlasTile(
+    state.refs,
+    state.map,
+    state.floor,
+    x,
+    y,
+    state.obstacles.get(key),
+  );
+  patchWorldMapAtlasTile(
+    state.refs,
+    state.map,
+    state.floor,
+    x,
+    y,
+    state.obstacles.get(key),
+  );
 }
 
 // writes `type` as the occupant at (x,y), first clearing whichever existing
 // occupant `type` is about to replace — needed because a combine result can
 // land in a different layer than either its held or target inputs came
-// from. A tile that allows a ground item on top of it (soil) is only
-// cleared when it's the tile layer itself being overwritten, so placing an
-// item on top of it leaves the tile in place. Reuses setTile for the
-// tile-layer case so the ground atlas patch still happens.
+// from. An obstacle that allows an item on top of it (soil) is only cleared
+// when it's the obstacle layer itself being overwritten, so placing an item
+// on top of it leaves the obstacle in place. Reuses setObstacle for the
+// obstacle-layer case so the ground atlas patch still happens.
 export function setOccupant(
   state: GameState,
   x: number,
@@ -94,69 +180,67 @@ export function setOccupant(
   type: CarryType | null,
 ): void {
   const key = x + ',' + y;
-  const existingTile = state.tiles.get(key);
-  const tileBlocks =
-    existingTile !== undefined && !TILE_DEFS[existingTile].allowGroundItem;
+  const existingObstacle = state.obstacles.get(key);
+  const obstacleBlocks =
+    existingObstacle !== undefined &&
+    !OBSTACLE_DEFS[existingObstacle].allowItem;
 
-  if (tileBlocks) setTile(state, x, y, null);
-  else state.groundItems.delete(key);
+  if (obstacleBlocks) setObstacle(state, x, y, null);
+  else state.items.delete(key);
 
   if (type === null) return;
-  if (type in TILE_DEFS) setTile(state, x, y, type as TileType);
-  else state.groundItems.set(key, { x, y, type: type as ItemType });
+  if (type in OBSTACLE_DEFS) setObstacle(state, x, y, type as ObstacleType);
+  else state.items.set(key, { x, y, type: type as ItemType });
 }
 
-export function tileAt(
+export function obstacleAt(
   state: GameState,
   x: number,
   y: number,
-): TileType | undefined {
-  return state.tiles.get(x + ',' + y);
+): ObstacleType | undefined {
+  return state.obstacles.get(x + ',' + y);
 }
 
-export function groundItemAt(
+export function itemAt(
   state: GameState,
   x: number,
   y: number,
-): GroundItem | undefined {
-  return state.groundItems.get(x + ',' + y);
+): Item | undefined {
+  return state.items.get(x + ',' + y);
 }
 
 // single occupancy check across both layers — replaces the repeated
-// `!isSolid(...) && !groundItemAt(...)` pattern that used to appear at
-// every call site that just needs to know "is anything here". For a tile
-// that allows a ground item on top of it (soil), an item sitting there
-// takes priority over the tile itself, so combining/picking up targets the
-// item rather than the soil underneath.
+// `!isSolid(...) && !itemAt(...)` pattern that used to appear at every call
+// site that just needs to know "is anything here". For an obstacle that
+// allows an item on top of it (soil), an item sitting there takes priority
+// over the obstacle itself, so combining/picking up targets the item rather
+// than the soil underneath.
 export function occupantAt(
   state: GameState,
   x: number,
   y: number,
-): TileType | ItemType | null {
-  const tile = tileAt(state, x, y);
-  if (tile !== undefined && !TILE_DEFS[tile].allowGroundItem) return tile;
-  return groundItemAt(state, x, y)?.type ?? tile ?? null;
+): ObstacleType | ItemType | null {
+  const obstacle = obstacleAt(state, x, y);
+  if (obstacle !== undefined && !OBSTACLE_DEFS[obstacle].allowItem)
+    return obstacle;
+  return itemAt(state, x, y)?.type ?? obstacle ?? null;
 }
 
-// true when (x,y) is a tile that allows a ground item on top of it (soil,
-// furnace) and nothing is already sitting there — the direct-placement
-// slot a ground item can drop into without going through the tile/combine
-// check, since occupantAt reports a bare allowGroundItem tile as occupied
-// (so pickup/click routing still finds it). Also excludes a cell with a
-// planted (not-yet-grown) seed or an in-progress furnace job, both of
-// which live outside state.groundItems and would otherwise get silently
-// shadowed by a new drop.
-export function openForGroundItem(
-  state: GameState,
-  x: number,
-  y: number,
-): boolean {
+// true when (x,y) is an obstacle that allows an item on top of it (soil,
+// furnace) and nothing is already sitting there — the direct-placement slot
+// an item can drop into without going through the obstacle/combine check,
+// since occupantAt reports a bare allowItem obstacle as occupied (so
+// pickup/click routing still finds it). Also excludes a cell with a planted
+// (not-yet-grown) seed or an in-progress furnace job, both of which live
+// outside state.items and would otherwise get silently shadowed by a new
+// drop.
+export function openForItem(state: GameState, x: number, y: number): boolean {
   const key = x + ',' + y;
-  const tile = tileAt(state, x, y);
+  const obstacle = obstacleAt(state, x, y);
   return (
-    tile !== undefined &&
-    TILE_DEFS[tile].allowGroundItem &&
-    !state.groundItems.has(key) &&
+    obstacle !== undefined &&
+    OBSTACLE_DEFS[obstacle].allowItem &&
+    !state.items.has(key) &&
     !state.seeds.has(key) &&
     !state.smelters.has(key)
   );
@@ -193,11 +277,11 @@ export function randomOpenTile(state: GameState): Point | null {
   return null;
 }
 
-// places a ground item at (tx,ty), falling back to a neighboring open tile
-// if that exact spot is occupied — shared by world-gen food seeding, player
+// places an item at (tx,ty), falling back to a neighboring open tile if
+// that exact spot is occupied — shared by world-gen food seeding, player
 // drops, and combat.ts's death drops, so a carried/dropped item never has
 // nowhere to go
-export function placeGroundItemNear(
+export function placeItemNear(
   state: GameState,
   tx: number,
   ty: number,
@@ -236,16 +320,16 @@ export function placeGroundItemNear(
     }
     if (!placed) return false;
   }
-  state.groundItems.set(dropX + ',' + dropY, { x: dropX, y: dropY, type });
+  state.items.set(dropX + ',' + dropY, { x: dropX, y: dropY, type });
   return true;
 }
 
 // paints the one oasis patch into `map`'s background layer and returns the
-// cells it touched — callers that also build state.tiles (buildWorldTiles
-// below) use the returned set to keep stone from generating underneath it;
-// loadGame (persistence.ts) only needs the paint side effect, since the
-// saved tiles already reflect a world that had the oasis carved out at
-// generation time
+// cells it touched — callers that also build state.obstacles
+// (buildWorldLayers below) use the returned set to keep stone from
+// generating underneath it; loadGame (persistence.ts) only needs the paint
+// side effect, since the saved obstacles already reflect a world that had
+// the oasis carved out at generation time
 export function paintOasis(map: number[][], seed: number): Set<string> {
   const rng = mulberry32(seed ^ OASIS_PLACEMENT_SALT);
   const oasis = buildOasisPatch(
@@ -271,12 +355,12 @@ export function paintOasis(map: number[][], seed: number): Set<string> {
 // structure) and, for every one at or above MIN_STRUCTURE_SIZE, rolls ore
 // independently on each interior cell (worldgen.ts's interiorCells, so ore
 // never lands on a structure's outer edge — it has to be dug into, not just
-// walked up to) at ORE_SPAWN_CHANCE. Ore is a ground item placed on cells
-// that stay 'stone' — same pattern the ground already uses for it elsewhere
-// (doPickup checks state.groundItems before the tile, so the item is grabbed
-// on approach and the stone tile itself still needs a separate dig to
-// clear). Ground items are returned separately since state.groundItems
-// isn't populated until after the atlas is built (see
+// walked up to) at ORE_SPAWN_CHANCE. Ore is an item placed on cells that
+// stay 'stone' — same pattern the ground already uses for it elsewhere
+// (doPickup checks state.items before the obstacle, so the item is grabbed
+// on approach and the stone obstacle itself still needs a separate dig to
+// clear). Resource items are returned separately since state.items isn't
+// populated until after the atlas is built (see
 // createGameState/regenerateWorld). Clusters below the threshold are left
 // as plain undecorated stone — small rubble, not real scavenge sites.
 // Because buildStones' spawn-safety carve always removes a 25-tile bubble
@@ -284,22 +368,56 @@ export function paintOasis(map: number[][], seed: number): Set<string> {
 // structure — it always starts in the open wasteland and has to go find one.
 // Also paints the one oasis patch into `map` and carves it out of `stones`
 // so the two features never fight for the same cells (see paintOasis above).
-function buildWorldTiles(
+// Finally scatters vegetation in a ring around the oasis (buildVegetationRing)
+// — bushes as 'fiber' obstacles, trees as a dedicated 2-tall 'tree' obstacle
+// (only the trunk cell collides or occupies state.obstacles; the canopy is a
+// per-frame, y-sorted visual — see the tree pass in render.ts) — carved out
+// of `stones` the same way the oasis itself is, so vegetation never tries to
+// grow out of a boulder. Only a tree's trunk cell also gets a 'dirt' floor
+// tile underneath it (the floor layer, see FloorType in types.ts) — bushes
+// don't get one. Picking up the obstacle only touches state.obstacles, so a
+// tree's floor is left exposed automatically, no special-casing needed.
+function buildWorldLayers(
   seed: number,
   map: number[][],
 ): {
-  tiles: Map<string, TileType>;
-  resourceItems: GroundItem[];
+  floor: Map<string, FloorType>;
+  obstacles: Map<string, ObstacleType>;
+  trees: Map<string, Tree>;
+  resourceItems: Item[];
 } {
   const oasis = paintOasis(map, seed);
   const stones = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
   for (const key of oasis) stones.delete(key);
-  const tiles = new Map<string, TileType>();
-  for (const key of stones) tiles.set(key, 'stone');
+  const obstacles = new Map<string, ObstacleType>();
+  for (const key of stones) obstacles.set(key, 'stone');
+
+  const vegRng = mulberry32(seed ^ VEGETATION_PLACEMENT_SALT);
+  const { bushes, trees: treeCells } = buildVegetationRing(
+    vegRng,
+    oasis,
+    MAP_W,
+    MAP_H,
+    { min: BUSH_RING_MIN, max: BUSH_RING_MAX, chance: BUSH_SPAWN_CHANCE },
+    { min: TREE_RING_MIN, max: TREE_RING_MAX, chance: TREE_SPAWN_CHANCE },
+  );
+  const floor = new Map<string, FloorType>();
+  const trees = new Map<string, Tree>();
+  for (const key of bushes) {
+    if (stones.has(key)) continue;
+    obstacles.set(key, 'fiber');
+  }
+  for (const key of treeCells) {
+    if (stones.has(key) || bushes.has(key)) continue;
+    obstacles.set(key, 'tree');
+    floor.set(key, 'dirt');
+    const [x, y] = key.split(',').map(Number);
+    trees.set(key, makeTreeAt(x, y));
+  }
 
   const structures = findRegions(stones, MAP_W, MAP_H);
   const rng = mulberry32(seed ^ RESOURCE_PLACEMENT_SALT);
-  const resourceItems: GroundItem[] = [];
+  const resourceItems: Item[] = [];
 
   for (const structure of structures) {
     if (structure.length < MIN_STRUCTURE_SIZE) continue;
@@ -308,7 +426,7 @@ function buildWorldTiles(
         resourceItems.push({ x: cell.x, y: cell.y, type: 'ore' });
     }
   }
-  return { tiles, resourceItems };
+  return { floor, obstacles, trees, resourceItems };
 }
 
 // records one sand-trail mark at (x,y), the tile the player is stepping off
@@ -349,18 +467,23 @@ export function regenerateWorld(
   state.rng = mulberry32(newSeed);
 
   state.map = buildMap(MAP_W, MAP_H);
-  const { tiles, resourceItems } = buildWorldTiles(newSeed, state.map);
-  state.tiles = tiles;
-  buildGroundAtlas(state.refs, state.map, state.tiles);
-  buildWorldMapAtlas(state.refs, state.map, state.tiles);
-  state.groundItems.clear();
+  const { floor, obstacles, trees, resourceItems } = buildWorldLayers(
+    newSeed,
+    state.map,
+  );
+  state.floor = floor;
+  state.obstacles = obstacles;
+  state.trees = trees;
+  buildGroundAtlas(state.refs, state.map, state.floor, state.obstacles);
+  buildWorldMapAtlas(state.refs, state.map, state.floor, state.obstacles);
+  state.items.clear();
   state.seeds.clear();
   state.smelters.clear();
   state.furnaces.clear();
   state.projectiles.length = 0;
   state.footprints.length = 0;
   for (const item of resourceItems)
-    state.groundItems.set(item.x + ',' + item.y, item);
+    state.items.set(item.x + ',' + item.y, item);
   spawnEnemies(state);
 
   const { player } = state;
@@ -385,7 +508,10 @@ export function createGameState(
   const seed = INITIAL_SEED;
   const rng = mulberry32(seed);
   const map = buildMap(MAP_W, MAP_H);
-  const { tiles, resourceItems } = buildWorldTiles(seed, map);
+  const { floor, obstacles, trees, resourceItems } = buildWorldLayers(
+    seed,
+    map,
+  );
 
   const state: GameState = {
     refs,
@@ -393,11 +519,13 @@ export function createGameState(
     seed,
     rng,
     map,
-    tiles,
-    groundItems: new Map(),
+    floor,
+    obstacles,
+    items: new Map(),
     seeds: new Map(),
     smelters: new Map(),
     furnaces: new Map(),
+    trees,
     enemies: [],
     player: {
       tileX: SPAWN_X,
@@ -434,10 +562,10 @@ export function createGameState(
     hoveredTile: null,
   };
 
-  buildGroundAtlas(refs, map, tiles);
-  buildWorldMapAtlas(refs, map, tiles);
+  buildGroundAtlas(refs, map, floor, obstacles);
+  buildWorldMapAtlas(refs, map, floor, obstacles);
   for (const item of resourceItems)
-    state.groundItems.set(item.x + ',' + item.y, item);
+    state.items.set(item.x + ',' + item.y, item);
   spawnEnemies(state);
 
   return state;
