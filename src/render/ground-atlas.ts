@@ -13,6 +13,7 @@
 // map area same as the reasoning above.
 import {
   FLOOR_DEFS,
+  ITEM_DEFS,
   MAP_H,
   MAP_W,
   OBSTACLE_DEFS,
@@ -22,6 +23,8 @@ import {
 import type { FloorType, GameRefs, ObstacleType } from '../types/types';
 import {
   COLORS,
+  drawBerryBushBody,
+  drawCactusBody,
   drawFloorOverlay,
   drawObstacle,
   drawObstacleOverlay,
@@ -52,6 +55,17 @@ export function patchGroundAtlasTile(
     const obstacleType = type === 'furnace' ? 'stone' : type;
     if (obstacleType === 'tree')
       drawTreeTrunk(ctx, TILE, sx, sy, OBSTACLE_DEFS.tree.colors);
+    else if (obstacleType === 'cactus')
+      drawCactusBody(
+        ctx,
+        TILE,
+        sx,
+        sy,
+        OBSTACLE_DEFS.cactus.colors,
+        ITEM_DEFS.cactusFruit.colors,
+      );
+    else if (obstacleType === 'berryBush')
+      drawBerryBushBody(ctx, TILE, sx, sy, OBSTACLE_DEFS.berryBush.colors);
     else if (obstacleType)
       drawObstacleOverlay(
         ctx,
@@ -59,7 +73,6 @@ export function patchGroundAtlasTile(
         sx,
         sy,
         OBSTACLE_DEFS[obstacleType].colors,
-        obstacleType === 'soil',
       );
     return;
   }
@@ -67,6 +80,23 @@ export function patchGroundAtlasTile(
   else if (type === 'tree') {
     drawTile(ctx, TILE, DIRT, sx, sy);
     drawTreeTrunk(ctx, TILE, sx, sy, OBSTACLE_DEFS.tree.colors);
+  } else if (type === 'cactus') {
+    drawTile(ctx, TILE, DIRT, sx, sy);
+    drawCactusBody(
+      ctx,
+      TILE,
+      sx,
+      sy,
+      OBSTACLE_DEFS.cactus.colors,
+      ITEM_DEFS.cactusFruit.colors,
+    );
+  } else if (type === 'berryBush') {
+    // the normal case for a wild bush — world-gen places it on no floor at
+    // all (see buildWorldLayers in state/state.ts), so it's inert until
+    // picked up and placed on soil; the plain sand/dirt background here
+    // keeps the body legible either way
+    drawTile(ctx, TILE, DIRT, sx, sy);
+    drawBerryBushBody(ctx, TILE, sx, sy, OBSTACLE_DEFS.berryBush.colors);
   } else if (type) drawObstacle(ctx, TILE, sx, sy, type);
   else drawTile(ctx, TILE, map[y][x], sx, sy);
 }

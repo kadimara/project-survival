@@ -5,14 +5,18 @@ import { RECIPES, tryCombine } from './combine';
 const ALL_CARRY_TYPES: CarryType[] = [
   'stone',
   'soil',
+  'dirt',
   'furnace',
   'wood',
+  'berryBush',
   'energy',
   'energySeed',
   'ingot',
   'ore',
   'sword',
   'bow',
+  'berry',
+  'poop',
 ];
 
 describe('tryCombine', () => {
@@ -28,11 +32,16 @@ describe('tryCombine', () => {
     expect(tryCombine('wood', 'ingot')).toBe('bow');
   });
 
+  it('resolves the dirt + poop recipe to soil', () => {
+    expect(tryCombine('dirt', 'poop')).toBe('soil');
+  });
+
   it('returns null for non-matching pairs', () => {
     expect(tryCombine('energy', 'ore')).toBeNull();
     expect(tryCombine('furnace', 'furnace')).toBeNull();
     expect(tryCombine('soil', 'stone')).toBeNull();
     expect(tryCombine('ingot', 'wood')).toBeNull();
+    expect(tryCombine('poop', 'dirt')).toBeNull();
   });
 
   it('matches RECIPES for every held/target pair (future-proofs new recipes)', () => {

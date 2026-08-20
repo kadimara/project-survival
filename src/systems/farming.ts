@@ -1,8 +1,16 @@
-// Soil-planted energySeed: periodically spawns a separate energy item on
-// the same cell, tracked in state.seeds rather than state.items so the
-// seed and the energy it produces can coexist at one position. The spawned
-// energy is an ordinary state.items entry — pickup/placement/rendering for
-// it need no seed-awareness at all.
+// Two independent ways soil produces food, both readyAt-gated on
+// state.tick rather than a wall-clock timer:
+//
+// - energySeed: planted explicitly by the player (see doPlace in
+//   player-actions.ts), tracked in state.seeds separately from state.items
+//   so the seed and the energy it produces can coexist at one position. The
+//   seed stays put once planted — the player can't pick the bare plant back
+//   up mid-grow the way a bush works below, only harvest what it produces.
+// - berryBush: never "planted" — the obstacle itself is permanent (kept in
+//   sync by setObstacle/buildWorldLayers in state/state.ts, see
+//   makeBerryBushAt), and simply grows a berry whenever it happens to be
+//   standing on soil floor. Moving one onto (or off of) soil just changes
+//   whether it's currently producing, with no separate action needed.
 import type { GameState } from '../types/types';
 import { ENERGY_SEED_GROW_TICKS } from '../constants';
 
@@ -25,5 +33,21 @@ export function updateSeeds(state: GameState): void {
     const key = seed.x + ',' + seed.y;
     if (state.items.has(key)) continue;
     state.items.set(key, { x: seed.x, y: seed.y, type: 'energy' });
+  }
+}
+
+// per-tick: any berryBush past its timer, standing on soil floor, with no
+// berry currently on its cell spawns one there — same has(key)-guarded,
+// re-armed-at-harvest shape as updateSeeds above. A bush not currently on
+// soil (the normal state for a wild one — world-gen never places soil, see
+// buildWorldLayers in state/state.ts) just sits idle rather than
+// producing; nothing removes the bush itself.
+export function updateBerryBushes(state: GameState): void {
+  for (const bush of state.berryBushes.values()) {
+    if (state.floor.get(bush.x + ',' + bush.y) !== 'soil') continue;
+    if (state.tick < bush.readyAt) continue;
+    const key = bush.x + ',' + bush.y;
+    if (state.items.has(key)) continue;
+    state.items.set(key, { x: bush.x, y: bush.y, type: 'berry' });
   }
 }

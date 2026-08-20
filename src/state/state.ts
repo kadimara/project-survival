@@ -5,6 +5,8 @@
 // import cycle (entities/entities.ts imports randomOpenTile from here, one
 // direction only).
 import type {
+  BerryBush,
+  Cactus,
   CarryType,
   FloorType,
   GameRefs,
@@ -16,9 +18,15 @@ import type {
   Tree,
 } from '../types/types';
 import {
+  BERRY_BUSH_GROW_TICKS,
   BUSH_RING_MAX,
   BUSH_RING_MIN,
   BUSH_SPAWN_CHANCE,
+  CACTUS_MAX_HP,
+  CACTUS_PLACEMENT_SALT,
+  CACTUS_SPAWN_CHANCE,
+  CACTUS_SPAWN_SAFETY_R,
+  FLOOR_DEFS,
   FOOTPRINT_MAX,
   INITIAL_SEED,
   MAP_H,
@@ -42,6 +50,7 @@ import {
   VEGETATION_PLACEMENT_SALT,
 } from '../constants';
 import {
+  buildCactusScatter,
   buildMap,
   buildOasisPatch,
   buildStones,
@@ -94,6 +103,34 @@ export function makeTreeAt(x: number, y: number): Tree {
   };
 }
 
+// a fresh, full-hp cactus at (x,y) — mirrors makeTreeAt above, used both by
+// world-gen (buildWorldLayers below, via setObstacle) and by
+// persistence.ts's decodeObstacleGrid. Never moves, so px/py are a static
+// snapshot like a tree's.
+export function makeCactusAt(x: number, y: number): Cactus {
+  return {
+    kind: 'cactus',
+    tileX: x,
+    tileY: y,
+    px: x * TILE,
+    py: y * TILE,
+    hp: CACTUS_MAX_HP,
+    maxHp: CACTUS_MAX_HP,
+    flashUntil: 0,
+  };
+}
+
+// a fresh berryBush at (x,y), its grow timer starting from `tick` — used by
+// world-gen (buildWorldLayers below, tick 0), setObstacle (the current
+// state.tick, so a player-placed bush starts its own wait right away), and
+// persistence.ts's decodeObstacleGrid (the loaded tick). Never ready
+// immediately: placing/loading a bush starts the same
+// BERRY_BUSH_GROW_TICKS wait as any regrow (see doPickup in
+// systems/player-actions.ts, which re-arms it the same way once harvested).
+export function makeBerryBushAt(x: number, y: number, tick: number): BerryBush {
+  return { x, y, readyAt: tick + BERRY_BUSH_GROW_TICKS };
+}
+
 export function setObstacle(
   state: GameState,
   x: number,
@@ -110,6 +147,11 @@ export function setObstacle(
   else state.furnaces.delete(key);
   if (type === 'tree') state.trees.set(key, makeTreeAt(x, y));
   else state.trees.delete(key);
+  if (type === 'cactus') state.cacti.set(key, makeCactusAt(x, y));
+  else state.cacti.delete(key);
+  if (type === 'berryBush')
+    state.berryBushes.set(key, makeBerryBushAt(x, y, state.tick));
+  else state.berryBushes.delete(key);
   patchGroundAtlasTile(
     state.refs,
     state.map,
@@ -169,10 +211,12 @@ export function setFloor(
 // writes `type` as the occupant at (x,y), first clearing whichever existing
 // occupant `type` is about to replace — needed because a combine result can
 // land in a different layer than either its held or target inputs came
-// from. An obstacle that allows an item on top of it (soil) is only cleared
-// when it's the obstacle layer itself being overwritten, so placing an item
-// on top of it leaves the obstacle in place. Reuses setObstacle for the
-// obstacle-layer case so the ground atlas patch still happens.
+// from (e.g. dirt + poop -> soil: a floor result from a held-floor +
+// target-item combine, see RECIPES in systems/combine.ts). An obstacle that
+// allows an item on top of it (furnace) is only cleared when it's the
+// obstacle layer itself being overwritten, so placing an item on top of it
+// leaves the obstacle in place. Reuses setObstacle/setFloor for their
+// respective layers so the ground atlas patch still happens either way.
 export function setOccupant(
   state: GameState,
   x: number,
@@ -189,7 +233,9 @@ export function setOccupant(
   else state.items.delete(key);
 
   if (type === null) return;
-  if (type in OBSTACLE_DEFS) setObstacle(state, x, y, type as ObstacleType);
+  if (type in FLOOR_DEFS) setFloor(state, x, y, type as FloorType);
+  else if (type in OBSTACLE_DEFS)
+    setObstacle(state, x, y, type as ObstacleType);
   else state.items.set(key, { x, y, type: type as ItemType });
 }
 
@@ -209,12 +255,19 @@ export function itemAt(
   return state.items.get(x + ',' + y);
 }
 
-// single occupancy check across both layers — replaces the repeated
-// `!isSolid(...) && !itemAt(...)` pattern that used to appear at every call
-// site that just needs to know "is anything here". For an obstacle that
-// allows an item on top of it (soil), an item sitting there takes priority
-// over the obstacle itself, so combining/picking up targets the item rather
-// than the soil underneath.
+// single occupancy check across both layers (plus a planted-but-not-yet-
+// grown energySeed, see below) — replaces the repeated `!isSolid(...) &&
+// !itemAt(...)` pattern that used to appear at every call site that just
+// needs to know "is anything here". For an obstacle that allows an item on
+// top of it (furnace), an item sitting there takes priority over the
+// obstacle itself, so combining/picking up targets the item rather than the
+// furnace underneath. A planted energySeed on bare soil (no energy grown
+// yet) is reported as 'energySeed' — soil itself is a FloorType, so a bare
+// planted seed is otherwise invisible to this obstacle/item-only check, and
+// without this fallback a held obstacle could get silently placed on top of
+// it (see doPlace/tryPlaceAt in systems/player-actions.ts). A berryBush
+// needs no equivalent fallback — it's a normal solid obstacle itself, so
+// the obstacle check above already reports it.
 export function occupantAt(
   state: GameState,
   x: number,
@@ -223,15 +276,18 @@ export function occupantAt(
   const obstacle = obstacleAt(state, x, y);
   if (obstacle !== undefined && !OBSTACLE_DEFS[obstacle].allowItem)
     return obstacle;
-  return itemAt(state, x, y)?.type ?? obstacle ?? null;
+  const item = itemAt(state, x, y)?.type;
+  if (item !== undefined) return item;
+  if (obstacle !== undefined) return obstacle;
+  return state.seeds.has(x + ',' + y) ? 'energySeed' : null;
 }
 
-// true when (x,y) is an obstacle that allows an item on top of it (soil,
-// furnace) and nothing is already sitting there — the direct-placement slot
-// an item can drop into without going through the obstacle/combine check,
-// since occupantAt reports a bare allowItem obstacle as occupied (so
-// pickup/click routing still finds it). Also excludes a cell with a planted
-// (not-yet-grown) seed or an in-progress furnace job, both of which live
+// true when (x,y) is an obstacle that allows an item on top of it (furnace)
+// and nothing is already sitting there — the direct-placement slot an item
+// can drop into without going through the obstacle/combine check, since
+// occupantAt reports a bare allowItem obstacle as occupied (so pickup/click
+// routing still finds it). Also excludes a cell with a planted (not-yet-
+// grown) energySeed or an in-progress furnace job, both of which live
 // outside state.items and would otherwise get silently shadowed by a new
 // drop.
 export function openForItem(state: GameState, x: number, y: number): boolean {
@@ -369,21 +425,28 @@ export function paintOasis(map: number[][], seed: number): Set<string> {
 // Also paints the one oasis patch into `map` and carves it out of `stones`
 // so the two features never fight for the same cells (see paintOasis above).
 // Finally scatters vegetation in a ring around the oasis (buildVegetationRing)
-// — bushes as 'fiber' obstacles, trees as a dedicated 2-tall 'tree' obstacle
+// — bushes as 'berryBush' obstacles, trees as a dedicated 2-tall 'tree' obstacle
 // (only the trunk cell collides or occupies state.obstacles; the canopy is a
 // per-frame, y-sorted visual — see the tree pass in render.ts) — carved out
 // of `stones` the same way the oasis itself is, so vegetation never tries to
-// grow out of a boulder. Only a tree's trunk cell also gets a 'dirt' floor
-// tile underneath it (the floor layer, see FloorType in types.ts) — bushes
-// don't get one. Picking up the obstacle only touches state.obstacles, so a
-// tree's floor is left exposed automatically, no special-casing needed.
+// grow out of a boulder. A tree's trunk cell gets a 'dirt' floor tile
+// underneath it (the floor layer, see FloorType in types.ts); a wild bush
+// gets no floor at all, so it just sits there inert until moved onto soil
+// (see updateBerryBushes in systems/farming.ts) — soil never enters the
+// world at world-gen time, only via the dirt + poop combine recipe (see
+// RECIPES in systems/combine.ts). Picking up the obstacle only touches
+// state.obstacles, so a tree's floor is left exposed automatically, no
+// special-casing needed.
 function buildWorldLayers(
   seed: number,
   map: number[][],
+  tick: number,
 ): {
   floor: Map<string, FloorType>;
   obstacles: Map<string, ObstacleType>;
   trees: Map<string, Tree>;
+  cacti: Map<string, Cactus>;
+  berryBushes: Map<string, BerryBush>;
   resourceItems: Item[];
 } {
   const oasis = paintOasis(map, seed);
@@ -403,9 +466,12 @@ function buildWorldLayers(
   );
   const floor = new Map<string, FloorType>();
   const trees = new Map<string, Tree>();
+  const berryBushes = new Map<string, BerryBush>();
   for (const key of bushes) {
     if (stones.has(key)) continue;
-    obstacles.set(key, 'fiber');
+    obstacles.set(key, 'berryBush');
+    const [x, y] = key.split(',').map(Number);
+    berryBushes.set(key, makeBerryBushAt(x, y, tick));
   }
   for (const key of treeCells) {
     if (stones.has(key) || bushes.has(key)) continue;
@@ -413,6 +479,32 @@ function buildWorldLayers(
     floor.set(key, 'dirt');
     const [x, y] = key.split(',').map(Number);
     trees.set(key, makeTreeAt(x, y));
+  }
+
+  // scattered across the whole map, not just the oasis ring — see
+  // buildCactusScatter's comment in worldgen.ts
+  const cactusRng = mulberry32(seed ^ CACTUS_PLACEMENT_SALT);
+  const cactusExclude = new Set<string>([
+    ...stones,
+    ...oasis,
+    ...bushes,
+    ...treeCells,
+  ]);
+  const cactusCells = buildCactusScatter(
+    cactusRng,
+    MAP_W,
+    MAP_H,
+    cactusExclude,
+    SPAWN_X,
+    SPAWN_Y,
+    CACTUS_SPAWN_SAFETY_R,
+    CACTUS_SPAWN_CHANCE,
+  );
+  const cacti = new Map<string, Cactus>();
+  for (const key of cactusCells) {
+    obstacles.set(key, 'cactus');
+    const [x, y] = key.split(',').map(Number);
+    cacti.set(key, makeCactusAt(x, y));
   }
 
   const structures = findRegions(stones, MAP_W, MAP_H);
@@ -426,7 +518,7 @@ function buildWorldLayers(
         resourceItems.push({ x: cell.x, y: cell.y, type: 'ore' });
     }
   }
-  return { floor, obstacles, trees, resourceItems };
+  return { floor, obstacles, trees, cacti, berryBushes, resourceItems };
 }
 
 // records one sand-trail mark at (x,y), the tile the player is stepping off
@@ -467,13 +559,13 @@ export function regenerateWorld(
   state.rng = mulberry32(newSeed);
 
   state.map = buildMap(MAP_W, MAP_H);
-  const { floor, obstacles, trees, resourceItems } = buildWorldLayers(
-    newSeed,
-    state.map,
-  );
+  const { floor, obstacles, trees, cacti, berryBushes, resourceItems } =
+    buildWorldLayers(newSeed, state.map, state.tick);
   state.floor = floor;
   state.obstacles = obstacles;
   state.trees = trees;
+  state.cacti = cacti;
+  state.berryBushes = berryBushes;
   buildGroundAtlas(state.refs, state.map, state.floor, state.obstacles);
   buildWorldMapAtlas(state.refs, state.map, state.floor, state.obstacles);
   state.items.clear();
@@ -508,10 +600,8 @@ export function createGameState(
   const seed = INITIAL_SEED;
   const rng = mulberry32(seed);
   const map = buildMap(MAP_W, MAP_H);
-  const { floor, obstacles, trees, resourceItems } = buildWorldLayers(
-    seed,
-    map,
-  );
+  const { floor, obstacles, trees, cacti, berryBushes, resourceItems } =
+    buildWorldLayers(seed, map, 0);
 
   const state: GameState = {
     refs,
@@ -526,6 +616,8 @@ export function createGameState(
     smelters: new Map(),
     furnaces: new Map(),
     trees,
+    cacti,
+    berryBushes,
     enemies: [],
     player: {
       tileX: SPAWN_X,

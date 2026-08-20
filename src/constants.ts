@@ -54,10 +54,11 @@ export const OASIS_PLACEMENT_SALT = 0x1b873593; // distinct from RESOURCE_PLACEM
 // ---- oasis vegetation: a fixed-distance ring band around the oasis's own
 // (wobbly) cell set, same "fixed distance, not noise-driven" philosophy as
 // the oasis itself — see buildVegetationRing in worldgen.ts. Bushes
-// ('fiber' obstacles) hug the water closely and densely; trees ('wood'
-// obstacles, reusing the existing ObstacleType rather than adding a new
-// one) sit further out and sparser. First-pass balance numbers, same spirit as
-// ORE_SPAWN_CHANCE ----
+// ('berryBush' obstacles, wild and inert until moved onto soil — see
+// buildWorldLayers in state/state.ts) hug the water closely and densely;
+// trees ('wood' obstacles, reusing the existing ObstacleType rather than
+// adding a new one) sit further out and sparser. First-pass balance numbers,
+// same spirit as ORE_SPAWN_CHANCE ----
 export const VEGETATION_PLACEMENT_SALT = 0x2545f491; // distinct from the other placement salts
 export const BUSH_RING_MIN = 1;
 export const BUSH_RING_MAX = 2;
@@ -66,12 +67,23 @@ export const TREE_RING_MIN = 2;
 export const TREE_RING_MAX = 5;
 export const TREE_SPAWN_CHANCE = 0.05;
 
+// ---- cactus fruit: unlike the oasis-ring bushes/trees above, cacti scatter
+// across the *whole* desert (see buildCactusScatter in worldgen.ts) — food
+// worth exploring for, not clustered around the one water source. Rolled
+// independently per open tile (stone/oasis/vegetation-ring cells excluded,
+// same as everything else that shares the map), same spirit as
+// ORE_SPAWN_CHANCE. CACTUS_SPAWN_SAFETY_R keeps them off the player's
+// immediate spawn point, same idea as buildStones' SPAWN_SAFETY_R. ----
+export const CACTUS_PLACEMENT_SALT = 0x3c6ef372; // distinct from the other placement salts
+export const CACTUS_SPAWN_CHANCE = 0.00075;
+export const CACTUS_SPAWN_SAFETY_R = 5;
+
 // ---- obstacle defs: the grid layer (solid, atlas-baked). pickable is
 // checked by doPickup — every current obstacle is pickable, but the flag
 // exists so a future non-pickable solid type (e.g. a boundary wall) has
 // somewhere to say so. allowItem marks whether the item layer can also be
-// occupied at the obstacle's cell (soil does, so an item — a planted
-// crop — can sit on top of it; stone/ore don't) ----
+// occupied at the obstacle's cell (furnace does, so an item dumped in for
+// smelting can sit on top of it; stone/ore don't) ----
 export const OBSTACLE_DEFS: Record<
   ObstacleType,
   {
@@ -87,15 +99,9 @@ export const OBSTACLE_DEFS: Record<
     allowItem: false,
     colors: { primary: '#8a8478', secondary: '#5e594e' },
   },
-  soil: {
-    solid: true,
-    pickable: true,
-    allowItem: true,
-    colors: { primary: '#6b4a30', secondary: '#43301f' },
-  },
   // built by combining two stone obstacles (see combine.ts) — not part of
   // procedural generation. allowItem lets any item be dumped straight onto
-  // it, same as soil (see systems/smelting.ts)
+  // it (see systems/smelting.ts)
   furnace: {
     solid: true,
     pickable: true,
@@ -114,12 +120,27 @@ export const OBSTACLE_DEFS: Record<
   },
   // scrub/bush vegetation scattered in a ring around the oasis (see
   // buildVegetationRing in worldgen.ts) — solid so it reads as a real
-  // obstacle to walk around, pickable like every other obstacle. Clearing
-  // one reveals the 'dirt' floor tile placed underneath it at world-gen
-  // time (see buildWorldLayers in state/state.ts).
-  fiber: {
+  // obstacle to walk around, pickable like every other obstacle. Wild, it
+  // stands on no floor at all and just sits there inert; picked up and
+  // placed onto 'soil' (made via the dirt + poop recipe, see combine.ts)
+  // it grows a berry item over time (see updateBerryBushes in
+  // systems/farming.ts) — moved back off soil, it goes idle again.
+  berryBush: {
     solid: true,
     pickable: true,
+    allowItem: false,
+    colors: { primary: '#5a7a3a', secondary: '#33471f' },
+  },
+  // a choppable desert cactus (see Cactus in types.ts, CACTUS_MAX_HP below,
+  // destroyCactus in systems/combat.ts) — reuses berryBush's exact green
+  // palette on purpose, so the body reads as the same scrub-plant material; the red
+  // fruit it drops (ITEM_DEFS.cactusFruit below) is drawn on top of this
+  // body as its own accent color rather than baked into these colors (see
+  // drawCactusBody in render/rendering.ts). Not pickable, same as tree —
+  // has to be destroyed in combat, not lifted straight off the ground.
+  cactus: {
+    solid: true,
+    pickable: false,
     allowItem: false,
     colors: { primary: '#5a7a3a', secondary: '#33471f' },
   },
@@ -129,7 +150,7 @@ export const OBSTACLE_DEFS: Record<
   // own (see TREE_CANOPY_COLORS below and the tree pass in render.ts), so
   // that tile stays walkable. Trunk colors reuse wood's palette (it's
   // literally a trunk); scattered in the oasis vegetation ring alongside
-  // fiber (see buildVegetationRing in worldgen.ts), placed as its own
+  // berryBush (see buildVegetationRing in worldgen.ts), placed as its own
   // ObstacleType rather than reusing 'wood' — see buildWorldLayers in
   // state/state.ts. Not directly pickable — a tree has to be chopped down
   // via combat (see TREE_MAX_HP, fellTree in systems/combat.ts) first,
@@ -147,10 +168,16 @@ export const OBSTACLE_DEFS: Record<
 // chopping one down takes noticeably more hits than fighting a basic enemy
 export const TREE_MAX_HP = 20;
 
+// hp a cactus has before destroyCactus (systems/combat.ts) clears it and
+// drops a cactusFruit — a smaller plant than a tree, so noticeably less hp,
+// but still more than a basic enemy (see ENEMY_MAX_HP above) so it isn't a
+// one-hit freebie
+export const CACTUS_MAX_HP = 12;
+
 // canopy color pair for the 2-tall tree above — render-only, not part of
 // OBSTACLE_DEFS since the canopy has no collision/pickup identity of its
 // own (see the tree pass in render.ts). A fuller forest green, kept
-// visually distinct from fiber's scrub green.
+// visually distinct from berryBush's scrub green.
 export const TREE_CANOPY_COLORS = {
   primary: '#3f7a3a',
   secondary: '#234d20',
@@ -159,9 +186,14 @@ export const TREE_CANOPY_COLORS = {
 // ---- floor defs: the layer beneath obstacles (see FloorType in types.ts)
 // — walkable ground material an obstacle or item can sit on top of. No
 // `solid` field like OBSTACLE_DEFS: everything here is walkable by
-// definition, so nothing ever needs to check it. Currently placed only
-// under the oasis's vegetation ring (see buildWorldLayers in state/state.ts),
-// reusing the same brown as soil/stone-cluster dirt on purpose ----
+// definition, so nothing ever needs to check it. 'dirt' is placed under the
+// oasis's vegetation ring (see buildWorldLayers in state/state.ts); 'soil'
+// never enters the world at world-gen time, only crafted via the dirt +
+// poop combine recipe (see RECIPES in systems/combine.ts) — it's what
+// makes a berryBush standing on it grow berries (see updateBerryBushes in
+// systems/farming.ts) rather than an obstacle in its own right — it needs
+// no solidity/occupant-combine semantics of its own, just to be checked as
+// the floor under a bush ----
 export const FLOOR_DEFS: Record<
   FloorType,
   { pickable: boolean; colors: { primary: string; secondary: string } }
@@ -169,6 +201,13 @@ export const FLOOR_DEFS: Record<
   dirt: {
     pickable: true,
     colors: { primary: '#6b4a30', secondary: '#43301f' },
+  },
+  // shares ITEM_DEFS.poop's exact colors on purpose — soil is dirt dug
+  // through with poop (see RECIPES in systems/combine.ts), so it reads as
+  // visibly richer/darker than plain dirt
+  soil: {
+    pickable: true,
+    colors: { primary: '#4a3323', secondary: '#2b1d13' },
   },
 };
 
@@ -209,16 +248,44 @@ export const ITEM_DEFS: Record<
   bow: {
     colors: { primary: '#a9773f', secondary: '#6b4c22' },
   },
+  // dropped by a destroyed cactus (see destroyCactus in systems/combat.ts) —
+  // a vivid red, deliberately unlike anything else in ITEM_DEFS, so it reads
+  // as food at a glance. Heals CACTUS_FRUIT_HEAL_AMOUNT on use (see
+  // useHeldItem in systems/player-actions.ts).
+  cactusFruit: {
+    colors: { primary: '#c1392b', secondary: '#7a2318' },
+  },
+  // grown by a berryBush obstacle standing on soil (see updateBerryBushes
+  // in systems/farming.ts) — a brighter, more saturated red than
+  // cactusFruit so the two still read apart despite both being "red food."
+  // Drawn as 4 dots at BERRY_DOT_OFFSETS rather than the generic item
+  // square (see drawItemIcon in render/rendering.ts), lining up with the
+  // same 4 spots the berryBush's own preview dots sit at.
+  berry: {
+    colors: { primary: '#e0333f', secondary: '#8a1620' },
+  },
+  // produced instead of healing when eating any food item while already at
+  // max hp (see useHeldItem in systems/player-actions.ts) — combine with a
+  // held dirt floor tile to make more soil (see RECIPES in
+  // systems/combine.ts). Deliberately close to dirt's brown but darker, so
+  // the two still read apart.
+  poop: {
+    colors: { primary: '#4a3323', secondary: '#2b1d13' },
+  },
 };
 
-// ---- soil farming: an energySeed planted on soil spawns an energy item on
-// the same cell after ENERGY_SEED_GROW_TICKS (if the cell doesn't already
-// have one); harvesting that energy restarts the seed's timer, so a seed
-// keeps producing renewably as long as it's kept picked
-// (systems/farming.ts). Measured in ticks, like everything else that gates
-// on state.tick, rather than milliseconds — 40 ticks (~10s at the current
-// TICK_MS) ----
-export const ENERGY_SEED_GROW_TICKS = 40;
+// ---- soil farming: two independent ways soil produces food (see
+// systems/farming.ts) — an energySeed the player explicitly planted, or a
+// berryBush obstacle simply standing on soil floor — each spawn an item on
+// the same cell after their own grow-tick count (if the cell doesn't
+// already have one); harvesting that item restarts the timer, so either
+// keeps producing renewably as long as it's kept picked. Measured in
+// ticks, like everything else that gates on state.tick, rather than
+// milliseconds ----
+export const ENERGY_SEED_GROW_TICKS = 40; // ~10s at the current TICK_MS
+// a bit faster than ENERGY_SEED_GROW_TICKS, since berries are the starter/
+// staple food rather than a mid-tier crafting resource
+export const BERRY_BUSH_GROW_TICKS = 30; // ~7.5s at the current TICK_MS
 
 // ---- furnace: ore placed on a furnace tile becomes an ingot after
 // ORE_SMELT_TICKS; any other item placed there melts away after
@@ -312,6 +379,15 @@ export const PLAYER_ATK_HP_COST = 1;
 // hp restored by using (eating) a held energy item, see useHeldItem in
 // systems/player-actions.ts
 export const ENERGY_HEAL_AMOUNT = 50;
+// hp restored by using (eating) a held cactusFruit item, same mechanic as
+// ENERGY_HEAL_AMOUNT above (see useHeldItem in systems/player-actions.ts)
+export const CACTUS_FRUIT_HEAL_AMOUNT = 50;
+// hp restored by using (eating) a held berry item — deliberately weaker
+// than ENERGY_HEAL_AMOUNT/CACTUS_FRUIT_HEAL_AMOUNT, since berries are the
+// reliable renewable staple (see systems/farming.ts) rather than the best
+// healing option. Eating any food (including berries) while already at max
+// hp produces a poop item instead of healing, see useHeldItem.
+export const BERRY_HEAL_AMOUNT = 25;
 
 // ---- roaming enemies: wander until they see you, then chase and attack ----
 export const ENEMY_COUNT = 0;

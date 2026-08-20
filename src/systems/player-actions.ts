@@ -10,6 +10,9 @@ import type {
   Point,
 } from '../types/types';
 import {
+  BERRY_BUSH_GROW_TICKS,
+  BERRY_HEAL_AMOUNT,
+  CACTUS_FRUIT_HEAL_AMOUNT,
   carryColor,
   ENERGY_HEAL_AMOUNT,
   ENERGY_SEED_GROW_TICKS,
@@ -28,6 +31,7 @@ import {
   leaveFootprint,
   occupantAt,
   openForItem,
+  placeItemNear,
   setFloor,
   setObstacle,
   setOccupant,
@@ -43,6 +47,7 @@ import {
   type Walkable,
 } from './pathfinding';
 import {
+  damageCactus,
   damageEnemy,
   damageTree,
   fireProjectile,
@@ -118,20 +123,36 @@ export function tryMove(
   );
 }
 
-// consumes the held item, if it's usable. Currently only energy does
-// anything (heals); anything else just declines with a toast, since it's
-// not food. Triggered by the "Use item" button, which is only shown while
-// something is held.
+// food items that heal on use, and by how much — see useHeldItem below.
+// Anything else held just declines with a toast, since it's not food.
+const HEAL_AMOUNTS: Partial<Record<ItemType, number>> = {
+  energy: ENERGY_HEAL_AMOUNT,
+  cactusFruit: CACTUS_FRUIT_HEAL_AMOUNT,
+  berry: BERRY_HEAL_AMOUNT,
+};
+
+// consumes the held item, if it's usable (heals). Triggered by the "Use
+// item" button, which is only shown while something is held. Eating while
+// already at max hp can't heal, so the food isn't just wasted — it's
+// digested into a poop item dropped at the player's feet instead (see
+// placeItemNear), which combines with dirt to make more soil (see RECIPES
+// in systems/combine.ts).
 export function useHeldItem(state: GameState, hud: HudRefs): void {
   const { player } = state;
   if (!player.held) return;
-  if (player.held !== 'energy') {
+  const healAmount = HEAL_AMOUNTS[player.held as ItemType];
+  if (healAmount === undefined) {
     showToast(hud, "You can't use that");
     return;
   }
-  player.hp = Math.min(player.maxHp, player.hp + ENERGY_HEAL_AMOUNT);
   player.held = null;
-  spawnFloatingText(state, player, '+' + ENERGY_HEAL_AMOUNT, '#7fd47f');
+  if (player.hp >= player.maxHp) {
+    placeItemNear(state, player.tileX, player.tileY, 'poop');
+    spawnFloatingText(state, player, 'poop', carryColor('poop'));
+  } else {
+    player.hp = Math.min(player.maxHp, player.hp + healAmount);
+    spawnFloatingText(state, player, '+' + healAmount, '#7fd47f');
+  }
   updateHud(state, hud);
 }
 
@@ -154,9 +175,9 @@ export function doPickup(
   const { player } = state;
   const key = x + ',' + y;
 
-  // an item (e.g. energy a seed grew) sits on top of the obstacle layer, so
-  // it takes priority: picking up harvests the item and leaves the obstacle
-  // (and any seed underneath it) behind
+  // an item (e.g. energy a seed grew, or a berry a bush grew) sits on top
+  // of the obstacle layer, so it takes priority: picking up harvests the
+  // item and leaves the seed/bush that produced it behind
   const item = state.items.get(key);
   if (item) {
     state.items.delete(key);
@@ -166,6 +187,10 @@ export function doPickup(
     const producingSeed = state.seeds.get(key);
     if (producingSeed)
       producingSeed.readyAt = state.tick + ENERGY_SEED_GROW_TICKS;
+    // same idea for a berry harvested off a still-standing berryBush
+    const producingBush = state.berryBushes.get(key);
+    if (producingBush)
+      producingBush.readyAt = state.tick + BERRY_BUSH_GROW_TICKS;
     spawnFloatingText(
       state,
       player,
@@ -193,7 +218,7 @@ export function doPickup(
   }
 
   // no loose item here — a bare (not-yet-grown, or already-harvested)
-  // planted seed is reachable and pickable in its own right
+  // planted energySeed is reachable and pickable in its own right
   const seed = state.seeds.get(key);
   if (seed) {
     state.seeds.delete(key);
@@ -247,12 +272,34 @@ export function doPlace(
   if (!terrainWalkable(state, x, y) || isEnemyAt(state, x, y) || !player.held)
     return;
   const held = player.held;
+  const key = x + ',' + y;
 
   // a held floor tile is placed onto the floor layer, not the
-  // obstacle/item layers — checked first since 'dirt' isn't a key in
+  // obstacle/item layers — checked first since 'dirt'/'soil' aren't keys in
   // OBSTACLE_DEFS, and falling through to the generic item-drop branch
-  // below would wrongly stash it in state.items as a fake ItemType
+  // below would wrongly stash it in state.items as a fake ItemType. The one
+  // exception is a matching combine target already sitting here as a loose
+  // item (dirt + poop -> soil, see RECIPES in systems/combine.ts) — checked
+  // first so that recipe can fire; an obstacle occupying the cell doesn't
+  // block floor placement either way, since floor/obstacle are independent
+  // layers.
   if (held in FLOOR_DEFS) {
+    const targetItem = state.items.get(key);
+    if (targetItem) {
+      const resultType = tryCombine(held, targetItem.type);
+      if (resultType !== null) {
+        setOccupant(state, x, y, resultType);
+        spawnFloatingText(
+          state,
+          player,
+          'combined into ' + resultType,
+          carryColor(resultType),
+        );
+        player.held = null;
+        updateHud(state, hud);
+        return;
+      }
+    }
     if (floorAt(state, x, y)) return; // already has a floor tile, stays in hand
     setFloor(state, x, y, held as FloorType);
     spawnFloatingText(state, player, 'placed ' + held, carryColor(held));
@@ -261,14 +308,36 @@ export function doPlace(
     return;
   }
 
-  // soil and furnace both allow an item to drop straight onto them without
-  // needing an empty cell or a combine recipe. A furnace dump is consumed —
-  // what's left depends on the item, see systems/smelting.ts. On soil, an
-  // energySeed gets planted (tracked separately, see systems/farming.ts)
-  // and anything else just sits there as a plain loose item.
+  // planting an energySeed requires bare soil floor with nothing else on
+  // the cell — checked before the generic obstacle/combine tail below
+  // since energySeed has no combine recipe, so it would otherwise land as
+  // a plain loose item there instead of getting planted (see
+  // systems/farming.ts). berryBush needs no equivalent branch — it's
+  // placed as a normal obstacle (see the tail below/setObstacle) and grows
+  // berries on its own once standing on soil, see updateBerryBushes.
+  if (
+    held === 'energySeed' &&
+    floorAt(state, x, y) === 'soil' &&
+    !state.obstacles.has(key) &&
+    !state.items.has(key) &&
+    !state.seeds.has(key) &&
+    !state.smelters.has(key)
+  ) {
+    plantSeed(state, x, y);
+    spawnFloatingText(state, player, 'planted ' + held, carryColor(held));
+    player.held = null;
+    updateHud(state, hud);
+    return;
+  }
+
+  // furnace allows an item to drop straight onto it without needing an
+  // empty cell or a combine recipe — the dump is consumed, what's left
+  // depends on the item, see systems/smelting.ts. Anything else held that
+  // reaches here (an item not planted or dumped) just sits as a plain loose
+  // item.
   if (!(held in OBSTACLE_DEFS) && openForItem(state, x, y)) {
     const item = held as ItemType;
-    if (state.obstacles.get(x + ',' + y) === 'furnace') {
+    if (state.obstacles.get(key) === 'furnace') {
       const outcome = dumpInFurnace(state, x, y, item);
       const text =
         outcome === 'smelting'
@@ -283,11 +352,7 @@ export function doPlace(
         outcome === 'destroyed' ? '#ff6b35' : carryColor(item),
       );
     } else {
-      if (item === 'energySeed') {
-        plantSeed(state, x, y);
-      } else {
-        state.items.set(x + ',' + y, { x, y, type: item });
-      }
+      state.items.set(key, { x, y, type: item });
       spawnFloatingText(state, player, 'placed ' + item, '#ecdfc4');
     }
     player.held = null;
@@ -351,11 +416,19 @@ export function tryPlaceAt(
 ): void {
   const { player } = state;
   if (!terrainWalkable(state, x, y) || !player.held) return;
-  const dropsOnSoil =
-    !(player.held in OBSTACLE_DEFS) && openForItem(state, x, y);
+  const held = player.held;
+  // furnace-dump bypass — occupantAt reports a bare allowItem obstacle
+  // (furnace) as occupied even with nothing dumped in it yet, which would
+  // otherwise wrongly block a plain item drop there via the tryCombine
+  // check below. Planting an energySeed on bare soil needs no equivalent
+  // bypass: soil is a FloorType, so occupantAt already reports an empty
+  // soil cell as unoccupied (see its comment in state/state.ts), and an
+  // already-planted one as 'energySeed' — either way the gate below
+  // resolves correctly on its own.
+  const dropsOnSoil = !(held in OBSTACLE_DEFS) && openForItem(state, x, y);
   if (!dropsOnSoil) {
     const target = occupantAt(state, x, y);
-    if (target !== null && tryCombine(player.held, target) === null) return;
+    if (target !== null && tryCombine(held, target) === null) return;
   }
   player.attackTarget = null;
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
@@ -402,8 +475,10 @@ export function attemptPlayerAttack(
     fireProjectile(state, player, t, damage, now);
   } else if (t.kind === 'enemy') {
     damageEnemy(state, hud, t, damage, now);
-  } else {
+  } else if (t.kind === 'tree') {
     damageTree(state, hud, t, damage, now);
+  } else {
+    damageCactus(state, hud, t, damage, now);
   }
   spendAttackHp(state, hud);
 }

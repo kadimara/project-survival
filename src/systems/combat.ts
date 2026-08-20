@@ -3,7 +3,14 @@
 // food, removing the corpse, resetting the game on player death). Kept
 // separate from player-actions.ts and ai.ts so neither has to import the
 // other.
-import type { Enemy, GameState, HudRefs, Player, Tree } from '../types/types';
+import type {
+  Cactus,
+  Enemy,
+  GameState,
+  HudRefs,
+  Player,
+  Tree,
+} from '../types/types';
 import {
   HIT_FLASH_MS,
   PLAYER_ATK_HP_COST,
@@ -125,6 +132,39 @@ export function damageTree(
   }
 }
 
+// a destroyed cactus is removed outright — unlike fellTree above, there's no
+// leftover obstacle to swap in; the reward is the cactusFruit dropped on the
+// ground where it stood (see placeItemNear), same as killEnemy's death drop.
+export function destroyCactus(
+  state: GameState,
+  hud: HudRefs,
+  cactus: Cactus,
+): void {
+  if (state.player.attackTarget === cactus) state.player.attackTarget = null;
+  spawnFloatingText(state, cactus, 'destroyed!', '#c1633c');
+  setObstacle(state, cactus.tileX, cactus.tileY, null);
+  placeItemNear(state, cactus.tileX, cactus.tileY, 'cactusFruit');
+  updateHud(state, hud);
+}
+
+// applies attack damage to a cactus — the cactus-side counterpart to
+// damageTree above, same damage/flash/floating-text shape
+export function damageCactus(
+  state: GameState,
+  hud: HudRefs,
+  cactus: Cactus,
+  amount: number,
+  now: number,
+): void {
+  cactus.hp -= amount;
+  cactus.flashUntil = now + HIT_FLASH_MS;
+  spawnFloatingText(state, cactus, '-' + amount, '#e8a838');
+  if (cactus.hp <= 0) {
+    cactus.hp = 0;
+    destroyCactus(state, hud, cactus);
+  }
+}
+
 // fires a ranged shot: damage is rolled now (see Projectile's comment in
 // types/types.ts for the OSRS-style "hit decided at cast time, hitsplat
 // delayed" convention this follows), but application — the damageEnemy/
@@ -136,7 +176,7 @@ export function damageTree(
 export function fireProjectile(
   state: GameState,
   player: Player,
-  target: Enemy | Tree,
+  target: Enemy | Tree | Cactus,
   damage: number,
   now: number,
 ): void {
@@ -175,7 +215,9 @@ export function updateProjectiles(
     if (p.target.hp <= 0) continue;
     if (p.target.kind === 'enemy')
       damageEnemy(state, hud, p.target, p.damage, now);
-    else damageTree(state, hud, p.target, p.damage, now);
+    else if (p.target.kind === 'tree')
+      damageTree(state, hud, p.target, p.damage, now);
+    else damageCactus(state, hud, p.target, p.damage, now);
   }
 }
 

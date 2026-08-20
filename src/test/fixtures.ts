@@ -1,6 +1,7 @@
 // Shared test fixtures for constructing minimal-but-real GameState/HudRefs
 // objects. Not matched by the vitest include glob (src/**/*.test.ts).
 import type {
+  Cactus,
   Enemy,
   GameRefs,
   GameState,
@@ -19,7 +20,7 @@ import {
 } from '../constants';
 import { buildMap, mulberry32 } from '../worldgen/worldgen';
 import { makeEnemy } from '../entities/entities';
-import { makeTreeAt } from '../state/state';
+import { makeCactusAt, makeTreeAt } from '../state/state';
 
 // inert stub — safe to dereference only because tests that reach code paths
 // touching state.refs (combat.ts's death path) mock render/ground-atlas.ts,
@@ -105,6 +106,14 @@ export function createTestTree(
   return { ...makeTreeAt(x, y), ...overrides };
 }
 
+export function createTestCactus(
+  x: number,
+  y: number,
+  overrides?: Partial<Cactus>,
+): Cactus {
+  return { ...makeCactusAt(x, y), ...overrides };
+}
+
 export function createTestGameState(overrides?: Partial<GameState>): GameState {
   const seed = 1;
   return {
@@ -120,6 +129,8 @@ export function createTestGameState(overrides?: Partial<GameState>): GameState {
     smelters: new Map(),
     furnaces: new Map(),
     trees: new Map(),
+    cacti: new Map(),
+    berryBushes: new Map(),
     enemies: [],
     player: createTestPlayer(),
     floatingTexts: [],

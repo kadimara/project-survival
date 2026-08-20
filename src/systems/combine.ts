@@ -16,6 +16,12 @@ export const RECIPES: CombineRecipe[] = [
   // shaft + arrowhead => bow (see WEAPON_DEFS in constants.ts for its
   // ranged attack stats)
   { held: 'wood', target: 'ingot', result: 'bow' },
+  // dig poop into dirt => soil, a floor result rather than the usual
+  // obstacle/item one (see setOccupant in state/state.ts for how that's
+  // routed) — the only source of soil in the game, since world-gen never
+  // places any (see buildWorldLayers in state/state.ts); a berryBush
+  // (see systems/farming.ts) has to be moved onto soil made this way
+  { held: 'dirt', target: 'poop', result: 'soil' },
 ];
 
 function recipeKey(held: CarryType, target: CarryType): string {

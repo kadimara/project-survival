@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createTestCactus,
   createTestEnemy,
   createTestGameState,
   createTestHudRefs,
@@ -16,9 +17,11 @@ import {
   TICK_MS,
 } from '../constants';
 import {
+  damageCactus,
   damageEnemy,
   damagePlayer,
   damageTree,
+  destroyCactus,
   fellTree,
   fireProjectile,
   killEnemy,
@@ -464,6 +467,137 @@ describe('fellTree', () => {
     state.player.attackTarget = otherTarget;
 
     fellTree(state, hud, tree);
+
+    expect(state.player.attackTarget).toBe(otherTarget);
+  });
+});
+
+describe('damageCactus', () => {
+  it('reduces hp by amount and sets flashUntil', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.cacti.set('10,10', cactus);
+
+    damageCactus(state, hud, cactus, 3, 1000);
+
+    expect(cactus.hp).toBe(cactus.maxHp - 3);
+    expect(cactus.flashUntil).toBe(1000 + HIT_FLASH_MS);
+  });
+
+  it('pushes a damage floating text at the cactus', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.cacti.set('10,10', cactus);
+
+    damageCactus(state, hud, cactus, 3, 1000);
+
+    const text = state.floatingTexts.at(-1);
+    expect(text?.text).toBe('-3');
+    expect(text?.color).toBe('#e8a838');
+  });
+
+  it('does not destroy the cactus on a non-lethal hit', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.cacti.set('10,10', cactus);
+    state.obstacles.set('10,10', 'cactus');
+
+    damageCactus(state, hud, cactus, cactus.hp - 1, 1000);
+
+    expect(state.obstacles.get('10,10')).toBe('cactus');
+  });
+
+  it('floors hp at 0 and destroys the cactus on a lethal hit', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.cacti.set('10,10', cactus);
+    state.obstacles.set('10,10', 'cactus');
+
+    damageCactus(state, hud, cactus, cactus.hp + 999, 1000);
+
+    expect(cactus.hp).toBe(0);
+    expect(state.obstacles.has('10,10')).toBe(false);
+  });
+});
+
+describe('destroyCactus', () => {
+  it("clears the cactus's obstacle cell", () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.cacti.set('10,10', cactus);
+    state.obstacles.set('10,10', 'cactus');
+
+    destroyCactus(state, hud, cactus);
+
+    expect(state.obstacles.has('10,10')).toBe(false);
+  });
+
+  it('removes the cactus from state.cacti', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.cacti.set('10,10', cactus);
+    state.obstacles.set('10,10', 'cactus');
+
+    destroyCactus(state, hud, cactus);
+
+    expect(state.cacti.has('10,10')).toBe(false);
+  });
+
+  it('drops a cactusFruit item at the cactus tile', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.obstacles.set('10,10', 'cactus');
+
+    destroyCactus(state, hud, cactus);
+
+    expect(state.items.get('10,10')).toEqual({
+      x: 10,
+      y: 10,
+      type: 'cactusFruit',
+    });
+  });
+
+  it('pushes a "destroyed!" floating text', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.obstacles.set('10,10', 'cactus');
+
+    destroyCactus(state, hud, cactus);
+
+    const text = state.floatingTexts.at(-1);
+    expect(text?.text).toBe('destroyed!');
+    expect(text?.color).toBe('#c1633c');
+  });
+
+  it('clears player.attackTarget when it was targeting the destroyed cactus', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    state.obstacles.set('10,10', 'cactus');
+    state.player.attackTarget = cactus;
+
+    destroyCactus(state, hud, cactus);
+
+    expect(state.player.attackTarget).toBeNull();
+  });
+
+  it('leaves player.attackTarget alone when it was targeting something else', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const cactus = createTestCactus(10, 10);
+    const otherTarget = createTestEnemy(1, 1);
+    state.obstacles.set('10,10', 'cactus');
+    state.player.attackTarget = otherTarget;
+
+    destroyCactus(state, hud, cactus);
 
     expect(state.player.attackTarget).toBe(otherTarget);
   });
