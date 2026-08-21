@@ -1,5 +1,6 @@
 import type {
   CarryType,
+  EnemyType,
   FloorType,
   ItemType,
   ObstacleType,
@@ -11,7 +12,7 @@ export const MAP_W = 300;
 export const MAP_H = 300;
 export const SPAWN_X = Math.floor(MAP_W / 2);
 export const SPAWN_Y = Math.floor(MAP_H / 2);
-export const INITIAL_SEED = 1674584215;
+export const INITIAL_SEED = 414988842;
 
 // length of one simulation tick — OSRS-style: movement, attacks, and AI
 // decisions all resolve on this cadence instead of continuously (see
@@ -389,22 +390,147 @@ export const CACTUS_FRUIT_HEAL_AMOUNT = 50;
 // hp produces a poop item instead of healing, see useHeldItem.
 export const BERRY_HEAL_AMOUNT = 25;
 
-// ---- roaming enemies: wander until they see you, then chase and attack ----
-export const ENEMY_COUNT = 0;
-export const ENEMY_MAX_HP = 10;
-export const ENEMY_ATK_DAMAGE = 2;
+// food items that heal on use/eat, and by how much — shared by
+// player-actions.ts's useHeldItem (the player eating) and systems/ai.ts (a
+// jerboa sensing/stealing food, then eating it once it's fled far enough —
+// see ENEMY_DEFS.jerboa's foodSenseRadius and resolveEat in ai.ts), so
+// "what counts as food" stays in one place. Anything not listed here isn't
+// food to either of them.
+export const FOOD_HEAL_AMOUNTS: Partial<Record<ItemType, number>> = {
+  energy: ENERGY_HEAL_AMOUNT,
+  cactusFruit: CACTUS_FRUIT_HEAL_AMOUNT,
+  berry: BERRY_HEAL_AMOUNT,
+};
+
+// ---- enemies: wander until they see you, then either chase-and-attack or
+// flee, depending on the type (see ENEMY_DEFS.fleesOnSight below, which
+// mirrors WEAPON_DEFS' per-variant-table shape); a few timing knobs stay
+// flat/global since no type diverges on them yet — trivial to move into
+// ENEMY_DEFS later if one needs to. ----
+export const JERBOA_COUNT = 12; // first-pass balance number, easy to retune
 // in ticks — see PLAYER_ATK_COOLDOWN_TICKS's comment on why this is
 // gated against state.tick rather than wall-clock time
-export const ENEMY_ATK_COOLDOWN_TICKS = 2;
-export const ENEMY_AGGRO_RADIUS = 5;
 export const ENEMY_LOSE_AGGRO_MS = 4000;
-export const ENEMY_WANDER_MIN_MS = 1200;
-export const ENEMY_WANDER_MAX_MS = 3000;
-export const ENEMY_WANDER_RADIUS = 4;
 // 1 tick — throttles repathing only, so unlike the attack cooldowns above
 // it's fine to stay wall-clock/ms rather than gated on state.tick
 export const ENEMY_REPATH_MS = 250;
 export const ENEMY_SPAWN_MIN_DIST = 10; // keep initial spawns away from the player's start
+
+// per-type combat/behavior/appearance stats — makeEnemy (entities.ts) reads
+// this instead of taking flat constants, and systems/ai.ts's updateEnemy
+// reads it every tick, so a new enemy type is a data addition here rather
+// than a rearchitecture. `leashRadius` is only consulted when the enemy has
+// a non-null `home` (see ai.ts) — a jerboa never leashes (home is always
+// null), so Infinity there is just "never applies", not a real distance.
+// `fleesOnSight`/`fleeRadius`/`foodSenseRadius`/`hopHeight` are all "off" (0
+// or false) for a type that doesn't use them, rather than omitted, so every
+// entry has the same shape. First-pass balance numbers throughout, easy to
+// retune.
+export const ENEMY_DEFS: Record<
+  EnemyType,
+  {
+    maxHp: number;
+    atkDamage: number;
+    atkCooldownTicks: number;
+    aggroRadius: number;
+    wanderRadius: number;
+    wanderMinMs: number;
+    wanderMaxMs: number;
+    leashRadius: number;
+    // true if sighting the player triggers a flee instead of a chase+attack
+    // (see updateEnemy in systems/ai.ts) — a fleeing type never reaches
+    // attemptEnemyAttack, so its atkDamage/atkCooldownTicks above are inert.
+    fleesOnSight: boolean;
+    // how far (tiles, from the player) a flee runs before stopping — "not
+    // very far", deliberately bigger than aggroRadius so it actually puts
+    // distance between itself and its own detection range rather than
+    // oscillating right at the boundary. Unused (0) for a type that never
+    // flees.
+    fleeRadius: number;
+    // detection range (tiles) for loose food items on the ground while
+    // wandering — see findNearestFoodItem in ai.ts. 0 = doesn't forage at
+    // all.
+    foodSenseRadius: number;
+    // per-frame cosmetic hop-arc height in px, applied only at draw time
+    // (see render.ts) — purely visual, no effect on movement speed/timing.
+    // 0 = no hop, draws flat like every other enemy.
+    hopHeight: number;
+    dropItem: ItemType;
+    colors: { primary: string; secondary: string };
+    inset: number;
+  }
+> = {
+  // a small skittish desert rodent (the mouse-kangaroo/jerboa Dune
+  // references) that roams the *entire* map (home is always null, unlike
+  // the guardian) searching for loose food, steals one when it finds it,
+  // and never fights back — see updateEnemy in systems/ai.ts for the
+  // flee/forage state machine. atkDamage/atkCooldownTicks are inert
+  // (fleesOnSight is true, so it never reaches the attack branch) but kept
+  // as explicit values rather than omitted, since every ENEMY_DEFS entry
+  // shares the same shape.
+  jerboa: {
+    maxHp: 4,
+    atkDamage: 0,
+    atkCooldownTicks: 2,
+    aggroRadius: 5,
+    wanderRadius: 3,
+    // snappier cadence than the guardian's — reads as more energetic, and
+    // re-evaluates its wander target more often, which helps it actually
+    // cover the whole map searching for food over time
+    wanderMinMs: 700,
+    wanderMaxMs: 1600,
+    leashRadius: Infinity,
+    fleesOnSight: true,
+    fleeRadius: 7,
+    // the largest of the three radii — it's meant to find food anywhere on
+    // the map over repeated wander cycles, not just nearby
+    foodSenseRadius: 12,
+    hopHeight: 4,
+    dropItem: 'energy',
+    // same sandstone as the guardian on purpose (the user asked for "the
+    // same color") — a smaller inset (below) is what tells them apart
+    // visually
+    colors: { primary: '#9c8465', secondary: '#5e4b34' },
+    inset: 5,
+  },
+  // lives in and defends a specific boulder-cluster structure (see
+  // planGuardianClusters/findClusterBorderTiles in worldgen.ts and
+  // spawnEnemies in entities/entities.ts) rather than roaming the open
+  // desert — weak (low hp/damage) but scurries around its home tile on a
+  // fast cadence within a small radius, and gives up a chase (leashRadius)
+  // well before it would ever be pulled far from its rocks. Shape:
+  // wanderRadius < aggroRadius < leashRadius, so a chase pulls it past its
+  // own sight range before breaking off — meant to feel like a real chase,
+  // not an instant snap-back. Never flees or forages — all four
+  // jerboa-specific fields are off.
+  boulderGuardian: {
+    maxHp: 5,
+    atkDamage: 1,
+    atkCooldownTicks: 2,
+    aggroRadius: 4,
+    wanderRadius: 2,
+    wanderMinMs: 800,
+    wanderMaxMs: 1800,
+    leashRadius: 6,
+    fleesOnSight: false,
+    fleeRadius: 0,
+    foodSenseRadius: 0,
+    hopHeight: 0,
+    dropItem: 'energy',
+    colors: { primary: '#9c8465', secondary: '#5e4b34' },
+    inset: 3,
+  },
+};
+
+// ---- boulder guardian placement: which boulder-cluster structures (see
+// MIN_STRUCTURE_SIZE/findRegions above) get inhabited, and by how many
+// guardians — see planGuardianClusters in worldgen.ts. First-pass balance
+// numbers, same spirit as ORE_SPAWN_CHANCE. ----
+export const GUARDIAN_PLACEMENT_SALT = 0x7f4a7c15; // distinct from the other placement salts
+export const GUARDIAN_MIN_CLUSTER_SIZE = MIN_STRUCTURE_SIZE; // reuse the "big enough to matter" threshold
+export const GUARDIAN_INHABIT_CHANCE = 0.35; // fraction of eligible clusters that get a guardian presence
+export const GUARDIAN_TILES_PER_GUARDIAN = 20; // cluster size per additional guardian, beyond the first
+export const GUARDIAN_MAX_PER_CLUSTER = 3;
 
 // ---- training dummy: fixed, immortal, immovable enemy near spawn (see
 // makeDummyEnemy in entities/entities.ts). Retaliates like a normal enemy

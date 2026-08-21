@@ -17,6 +17,7 @@ import type {
   Point,
   Tree,
 } from '../types/types';
+import type { Cell } from '../worldgen/worldgen';
 import {
   BERRY_BUSH_GROW_TICKS,
   BUSH_RING_MAX,
@@ -448,6 +449,7 @@ function buildWorldLayers(
   cacti: Map<string, Cactus>;
   berryBushes: Map<string, BerryBush>;
   resourceItems: Item[];
+  structures: Cell[][];
 } {
   const oasis = paintOasis(map, seed);
   const stones = buildStones(seed, MAP_W, MAP_H, SPAWN_X, SPAWN_Y);
@@ -518,7 +520,15 @@ function buildWorldLayers(
         resourceItems.push({ x: cell.x, y: cell.y, type: 'ore' });
     }
   }
-  return { floor, obstacles, trees, cacti, berryBushes, resourceItems };
+  return {
+    floor,
+    obstacles,
+    trees,
+    cacti,
+    berryBushes,
+    resourceItems,
+    structures,
+  };
 }
 
 // records one sand-trail mark at (x,y), the tile the player is stepping off
@@ -553,14 +563,21 @@ export function spawnFloatingText(
 export function regenerateWorld(
   state: GameState,
   newSeed: number,
-  spawnEnemies: (state: GameState) => void,
+  spawnEnemies: (state: GameState, structures: Cell[][]) => void,
 ): void {
   state.seed = newSeed;
   state.rng = mulberry32(newSeed);
 
   state.map = buildMap(MAP_W, MAP_H);
-  const { floor, obstacles, trees, cacti, berryBushes, resourceItems } =
-    buildWorldLayers(newSeed, state.map, state.tick);
+  const {
+    floor,
+    obstacles,
+    trees,
+    cacti,
+    berryBushes,
+    resourceItems,
+    structures,
+  } = buildWorldLayers(newSeed, state.map, state.tick);
   state.floor = floor;
   state.obstacles = obstacles;
   state.trees = trees;
@@ -576,7 +593,7 @@ export function regenerateWorld(
   state.footprints.length = 0;
   for (const item of resourceItems)
     state.items.set(item.x + ',' + item.y, item);
-  spawnEnemies(state);
+  spawnEnemies(state, structures);
 
   const { player } = state;
   player.held = null;
@@ -595,13 +612,20 @@ export function regenerateWorld(
 
 export function createGameState(
   refs: GameRefs,
-  spawnEnemies: (state: GameState) => void,
+  spawnEnemies: (state: GameState, structures: Cell[][]) => void,
 ): GameState {
   const seed = INITIAL_SEED;
   const rng = mulberry32(seed);
   const map = buildMap(MAP_W, MAP_H);
-  const { floor, obstacles, trees, cacti, berryBushes, resourceItems } =
-    buildWorldLayers(seed, map, 0);
+  const {
+    floor,
+    obstacles,
+    trees,
+    cacti,
+    berryBushes,
+    resourceItems,
+    structures,
+  } = buildWorldLayers(seed, map, 0);
 
   const state: GameState = {
     refs,
@@ -658,7 +682,7 @@ export function createGameState(
   buildWorldMapAtlas(refs, map, floor, obstacles);
   for (const item of resourceItems)
     state.items.set(item.x + ',' + item.y, item);
-  spawnEnemies(state);
+  spawnEnemies(state, structures);
 
   return state;
 }

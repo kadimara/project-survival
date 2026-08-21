@@ -3,23 +3,49 @@
 // occupancy queries; nothing in state/ imports back from here (spawnEnemies
 // is injected into state's createGameState/regenerateWorld as a callback
 // instead) so there's no import cycle between the two.
-import type { Actor, Dir, Enemy, GameState, Point } from '../types/types';
+import type {
+  Actor,
+  Dir,
+  Enemy,
+  EnemyType,
+  GameState,
+  Point,
+} from '../types/types';
 import {
-  ENEMY_COUNT,
-  ENEMY_MAX_HP,
+  ENEMY_DEFS,
   ENEMY_SPAWN_MIN_DIST,
-  ENEMY_WANDER_MAX_MS,
-  ENEMY_WANDER_MIN_MS,
+  GUARDIAN_INHABIT_CHANCE,
+  GUARDIAN_MAX_PER_CLUSTER,
+  GUARDIAN_MIN_CLUSTER_SIZE,
+  GUARDIAN_PLACEMENT_SALT,
+  GUARDIAN_TILES_PER_GUARDIAN,
+  JERBOA_COUNT,
+  MAP_H,
+  MAP_W,
   SPAWN_X,
   SPAWN_Y,
   TICK_MS,
   TILE,
 } from '../constants';
-import { randomOpenTile } from '../state/state';
+import { randomOpenTile, walkable } from '../state/state';
+import {
+  type Cell,
+  findClusterBorderTiles,
+  mulberry32,
+  planGuardianClusters,
+  shuffleGuardianCandidates,
+} from '../worldgen/worldgen';
 
-export function makeEnemy(x: number, y: number): Enemy {
+export function makeEnemy(
+  type: EnemyType,
+  x: number,
+  y: number,
+  home: Point | null = null,
+): Enemy {
+  const def = ENEMY_DEFS[type];
   return {
     kind: 'enemy',
+    type,
     tileX: x,
     tileY: y,
     px: x * TILE,
@@ -32,15 +58,17 @@ export function makeEnemy(x: number, y: number): Enemy {
     fromY: y,
     toX: x,
     toY: y,
-    hp: ENEMY_MAX_HP,
-    maxHp: ENEMY_MAX_HP,
+    path: [],
+    hp: def.maxHp,
+    maxHp: def.maxHp,
     state: 'wander',
     target: null,
-    path: [],
+    home,
+    carrying: null,
     nextWanderAt:
       performance.now() +
-      ENEMY_WANDER_MIN_MS +
-      Math.random() * (ENEMY_WANDER_MAX_MS - ENEMY_WANDER_MIN_MS),
+      def.wanderMinMs +
+      Math.random() * (def.wanderMaxMs - def.wanderMinMs),
     nextRepathAt: 0,
     nextAttackAt: 0,
     aggroUntil: 0,
@@ -50,23 +78,31 @@ export function makeEnemy(x: number, y: number): Enemy {
 }
 
 // the fixed training dummy near spawn: infinite hp so it never dies, and
-// `stationary` tells systems/ai.ts's updateEnemy to skip wander/chase
-// movement entirely — it only retaliates (on a slow cooldown) when the
-// player stands next to it
+// `stationary` tells systems/ai.ts's updateEnemy to skip wander/chase/flee
+// entirely — it only retaliates (on a slow cooldown) when the player stands
+// next to it. Built from 'boulderGuardian' rather than 'jerboa': stationary
+// short-circuits before wander/chase/flee either way, but attemptEnemyAttack
+// still reads its damage from ENEMY_DEFS[type] fresh each retaliation, and a
+// jerboa's atkDamage is deliberately 0 (it never fights) — boulderGuardian
+// is the type that actually hits back, so the dummy borrows its stats.
 export function makeDummyEnemy(x: number, y: number): Enemy {
   return {
-    ...makeEnemy(x, y),
+    ...makeEnemy('boulderGuardian', x, y),
     hp: Infinity,
     maxHp: Infinity,
     stationary: true,
   };
 }
 
-export function spawnEnemies(state: GameState): void {
+// `structures` is buildWorldLayers' already-computed list of connected
+// boulder-cluster structures (see findRegions in worldgen.ts), threaded
+// through createGameState/regenerateWorld's spawnEnemies callback so this
+// doesn't have to re-run a second full-map flood fill.
+export function spawnEnemies(state: GameState, structures: Cell[][]): void {
   state.enemies.length = 0;
   // the training dummy is disabled for now — makeDummyEnemy is left intact
-  // below so it's a one-line re-add, not a re-implementation
-  for (let i = 0; i < ENEMY_COUNT; i++) {
+  // above so it's a one-line re-add, not a re-implementation
+  for (let i = 0; i < JERBOA_COUNT; i++) {
     let spot: Point | null = null;
     for (let tries = 0; tries < 30; tries++) {
       const s = randomOpenTile(state);
@@ -76,7 +112,35 @@ export function spawnEnemies(state: GameState): void {
         break;
       }
     }
-    if (spot) state.enemies.push(makeEnemy(spot.x, spot.y));
+    if (spot) state.enemies.push(makeEnemy('jerboa', spot.x, spot.y));
+  }
+
+  // boulder guardians: a salted RNG stream, independent of both the terrain
+  // noise's own seed usage and gameplay's state.rng, matching every other
+  // world-gen placement pass (see OASIS_PLACEMENT_SALT et al. in
+  // constants.ts) rather than the jerboa loop's live state.rng above.
+  const stones = new Set<string>();
+  for (const structure of structures)
+    for (const cell of structure) stones.add(cell.x + ',' + cell.y);
+  const guardianRng = mulberry32(state.seed ^ GUARDIAN_PLACEMENT_SALT);
+  const plans = planGuardianClusters(
+    guardianRng,
+    structures,
+    GUARDIAN_MIN_CLUSTER_SIZE,
+    GUARDIAN_INHABIT_CHANCE,
+    GUARDIAN_TILES_PER_GUARDIAN,
+    GUARDIAN_MAX_PER_CLUSTER,
+  );
+  for (const { structure, count } of plans) {
+    const border = findClusterBorderTiles(structure, stones, MAP_W, MAP_H);
+    const candidates = shuffleGuardianCandidates(guardianRng, border);
+    let placed = 0;
+    for (const spot of candidates) {
+      if (placed >= count) break;
+      if (!walkable(state, spot.x, spot.y)) continue;
+      state.enemies.push(makeEnemy('boulderGuardian', spot.x, spot.y, spot));
+      placed++;
+    }
   }
 }
 

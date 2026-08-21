@@ -90,12 +90,22 @@ export function createTestPlayer(overrides?: Partial<Player>): Player {
   };
 }
 
+// hp/maxHp default to a generous, test-only value rather than jerboa's real
+// (low) ENEMY_DEFS.maxHp, so combat tests that just need "a sufficiently
+// tanky enemy" (not specifically testing per-type hp) don't silently start
+// asserting on a lethal hit whenever real balance numbers change — tests
+// that do care about low/exact hp override it via `overrides`.
 export function createTestEnemy(
   x: number,
   y: number,
   overrides?: Partial<Enemy>,
 ): Enemy {
-  return { ...makeEnemy(x, y), ...overrides };
+  return {
+    ...makeEnemy('jerboa', x, y),
+    hp: 999,
+    maxHp: 999,
+    ...overrides,
+  };
 }
 
 export function createTestTree(

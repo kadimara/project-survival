@@ -30,6 +30,15 @@ export type ItemType =
   | 'poop';
 export type CarryType = ObstacleType | ItemType | FloorType;
 
+// 'jerboa' is a small skittish desert rodent (and the training dummy's base
+// shape) that roams the whole map searching for loose food items, steals one
+// when it finds it, and flees rather than ever fighting back (see
+// systems/ai.ts's updateEnemy); 'boulderGuardian' lives in and defends a
+// specific boulder-cluster structure (see planGuardianClusters in
+// worldgen.ts) rather than roaming freely — see ENEMY_DEFS in constants.ts
+// for their per-type stats.
+export type EnemyType = 'jerboa' | 'boulderGuardian';
+
 export interface Point {
   x: number;
   y: number;
@@ -132,10 +141,24 @@ export interface Enemy extends Actor {
   // damage-application function without the two types otherwise needing
   // anything in common beyond position/hp/flash
   kind: 'enemy';
+  type: EnemyType;
   hp: number;
   maxHp: number;
-  state: 'wander' | 'chase';
+  state: 'wander' | 'chase' | 'flee';
   target: Player | null;
+  // the tile this enemy is tethered to for wander-anchoring and the chase
+  // leash (see systems/ai.ts's updateEnemy) — null for a jerboa, which
+  // wanders unanchored across the whole map; set to a tile near its home
+  // boulder-cluster structure for a boulderGuardian (see spawnEnemies in
+  // entities/entities.ts)
+  home: Point | null;
+  // the food item type a jerboa has stolen off the ground, or null if it
+  // isn't carrying anything (see ENEMY_DEFS.jerboa's foodSenseRadius/
+  // fleesOnSight and updateEnemy in systems/ai.ts) — cleared either by
+  // eating it (flee-end heal, see resolveEat) or by taking any hit (see
+  // damageEnemy in systems/combat.ts). Always null for a boulderGuardian,
+  // which never forages (foodSenseRadius: 0).
+  carrying: ItemType | null;
   nextWanderAt: number;
   nextRepathAt: number;
   // tick count (state.tick), same as Player.nextAttackAt above
