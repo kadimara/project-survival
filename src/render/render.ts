@@ -4,6 +4,7 @@
 import type { GameState, Point } from '../types/types';
 import {
   carryColor,
+  ENEMY_DEFS,
   FOOTPRINT_FADE_MS,
   FOOTPRINT_MAX_ALPHA,
   ITEM_DEFS,
@@ -60,9 +61,9 @@ export function renderWorldMap(state: GameState): void {
       WORLD_TILE,
     );
   }
-  worldCtx.fillStyle = '#8b3fae';
   for (const en of state.enemies) {
     if (en.hp <= 0) continue;
+    worldCtx.fillStyle = ENEMY_DEFS[en.type].colors.primary;
     worldCtx.fillRect(
       en.tileX * WORLD_TILE - 1,
       en.tileY * WORLD_TILE - 1,
@@ -229,13 +230,32 @@ export function render(state: GameState, now: number): void {
     layered.push({
       y: enemy.py,
       draw: () => {
-        drawSquareEntity(ctx, TILE, sx, sy, '#8b3fae', '#43205a', 2);
+        const def = ENEMY_DEFS[enemy.type];
+        // purely cosmetic per-step hop arc (see ENEMY_DEFS.hopHeight) — `t`
+        // mirrors the same move-progress entities.ts's updateActorAnimation
+        // computes internally for px/py, recomputed here since render.ts
+        // doesn't have access to that internal value. No effect on the
+        // actual tile position/timing, just where the sprite is drawn.
+        let drawSy = sy;
+        if (enemy.moving && def.hopHeight > 0) {
+          const t = Math.min(1, (now - enemy.moveStart) / enemy.moveDur);
+          drawSy -= Math.sin(t * Math.PI) * def.hopHeight;
+        }
+        drawSquareEntity(
+          ctx,
+          TILE,
+          sx,
+          drawSy,
+          def.colors.primary,
+          def.colors.secondary,
+          def.inset,
+        );
         if (enemy.flashUntil && now < enemy.flashUntil) {
           ctx.fillStyle = 'rgba(255,255,255,0.5)';
-          ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
+          ctx.fillRect(sx + 2, drawSy + 2, TILE - 4, TILE - 4);
         }
         if (enemy.hp < enemy.maxHp)
-          drawHpBar(ctx, TILE, sx, sy, enemy.hp / enemy.maxHp);
+          drawHpBar(ctx, TILE, sx, drawSy, enemy.hp / enemy.maxHp);
       },
     });
   }

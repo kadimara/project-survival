@@ -11,12 +11,10 @@ import type {
 } from '../types/types';
 import {
   BERRY_BUSH_GROW_TICKS,
-  BERRY_HEAL_AMOUNT,
-  CACTUS_FRUIT_HEAL_AMOUNT,
   carryColor,
-  ENERGY_HEAL_AMOUNT,
   ENERGY_SEED_GROW_TICKS,
   FLOOR_DEFS,
+  FOOD_HEAL_AMOUNTS,
   OBSTACLE_DEFS,
   PLAYER_ATK_COOLDOWN_TICKS,
   PLAYER_ATK_DAMAGE,
@@ -123,24 +121,17 @@ export function tryMove(
   );
 }
 
-// food items that heal on use, and by how much — see useHeldItem below.
-// Anything else held just declines with a toast, since it's not food.
-const HEAL_AMOUNTS: Partial<Record<ItemType, number>> = {
-  energy: ENERGY_HEAL_AMOUNT,
-  cactusFruit: CACTUS_FRUIT_HEAL_AMOUNT,
-  berry: BERRY_HEAL_AMOUNT,
-};
-
 // consumes the held item, if it's usable (heals). Triggered by the "Use
 // item" button, which is only shown while something is held. Eating while
 // already at max hp can't heal, so the food isn't just wasted — it's
 // digested into a poop item dropped at the player's feet instead (see
 // placeItemNear), which combines with dirt to make more soil (see RECIPES
-// in systems/combine.ts).
+// in systems/combine.ts). Anything else held just declines with a toast,
+// since it's not food (see FOOD_HEAL_AMOUNTS in constants.ts).
 export function useHeldItem(state: GameState, hud: HudRefs): void {
   const { player } = state;
   if (!player.held) return;
-  const healAmount = HEAL_AMOUNTS[player.held as ItemType];
+  const healAmount = FOOD_HEAL_AMOUNTS[player.held as ItemType];
   if (healAmount === undefined) {
     showToast(hud, "You can't use that");
     return;

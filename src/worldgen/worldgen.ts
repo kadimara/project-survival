@@ -251,6 +251,81 @@ export function interiorCells(structure: Cell[], members: Set<string>): Cell[] {
   });
 }
 
+// decides which boulder-cluster structures (see findRegions above) get a
+// guardian presence, and how many each gets — used by spawnEnemies in
+// entities/entities.ts. Only structures at or above minClusterSize are even
+// eligible (same "big enough to matter" spirit as MIN_STRUCTURE_SIZE's use
+// for ore); each eligible structure independently rolls inhabitChance, and
+// an inhabited one gets floor(size / tilesPerGuardian) guardians, at least 1
+// and at most maxPerGuardian — so a bigger boulder pile reliably gets more
+// guardians than a small one, not just a higher chance of any.
+export function planGuardianClusters(
+  rng: Rng,
+  structures: Cell[][],
+  minClusterSize: number,
+  inhabitChance: number,
+  tilesPerGuardian: number,
+  maxPerCluster: number,
+): { structure: Cell[]; count: number }[] {
+  const plans: { structure: Cell[]; count: number }[] = [];
+  for (const structure of structures) {
+    if (structure.length < minClusterSize) continue;
+    if (rng() >= inhabitChance) continue;
+    const count = Math.min(
+      maxPerCluster,
+      Math.max(1, Math.floor(structure.length / tilesPerGuardian)),
+    );
+    plans.push({ structure, count });
+  }
+  return plans;
+}
+
+// open (non-stone), in-bounds tiles 4-directionally adjacent to `structure`
+// — candidate home tiles for a guardian, so it lives right next to its
+// boulders without ever spawning on solid stone itself. `stones` is the
+// same flat solid-tile set findRegions was run on, reused here rather than
+// re-deriving structure membership.
+export function findClusterBorderTiles(
+  structure: Cell[],
+  stones: Set<string>,
+  mapW: number,
+  mapH: number,
+): Cell[] {
+  const dirs: [number, number][] = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  const seen = new Set<string>();
+  const border: Cell[] = [];
+  for (const { x, y } of structure) {
+    for (const [dx, dy] of dirs) {
+      const nx = x + dx,
+        ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= mapW || ny >= mapH) continue;
+      const key = nx + ',' + ny;
+      if (stones.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      border.push({ x: nx, y: ny });
+    }
+  }
+  return border;
+}
+
+// Fisher-Yates shuffle of `tiles` via `rng` — spawnEnemies walks the result
+// in order, taking the first candidates that also pass a live occupancy
+// check (not baked in here, since occupancy depends on GameState, which
+// this file deliberately never imports).
+export function shuffleGuardianCandidates(rng: Rng, tiles: Cell[]): Cell[] {
+  const shuffled = tiles.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 // max wobble amplitude buildOasisPatch's two sine harmonics can add, as a
 // fraction of the base radius — kept small and well under 1, so the shape
 // reads as a circle with a bit of natural irregularity rather than a
