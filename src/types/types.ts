@@ -17,10 +17,11 @@ export type Dir = 'up' | 'down' | 'left' | 'right';
 // around, so it doesn't need `solid`/occupant-combine semantics.
 export type FloorType = 'dirt' | 'soil';
 export type ObstacleType =
-  'stone' | 'furnace' | 'wood' | 'berryBush' | 'tree' | 'cactus';
+  'stone' | 'furnace' | 'campfire' | 'wood' | 'berryBush' | 'tree' | 'cactus';
 export type ItemType =
-  | 'energy'
-  | 'energySeed'
+  | 'rawMeat'
+  | 'meat'
+  | 'coal'
   | 'ingot'
   | 'ore'
   | 'sword'
@@ -50,14 +51,6 @@ export interface Item extends Point {
   type: ItemType;
 }
 
-// an energySeed planted on soil, tracked separately from state.items so a
-// seed and the energy it periodically spawns can occupy the same cell at
-// once (see systems/farming.ts). readyAt is a tick count (state.tick), not
-// a millisecond timestamp.
-export interface PlantedSeed extends Point {
-  readyAt: number;
-}
-
 // a berryBush obstacle (see OBSTACLE_DEFS in constants.ts) — kept in sync
 // by setObstacle/buildWorldLayers in state/state.ts, same pattern as
 // Tree/Cactus below, except a bush is never attacked/destroyed, just
@@ -68,14 +61,28 @@ export interface BerryBush extends Point {
   readyAt: number;
 }
 
-// an item dumped on a furnace tile, tracked separately from state.items for
-// the same reason as PlantedSeed — see systems/smelting.ts. The player can
-// pick the original `item` back up any time before readyAt; once it passes,
-// the job resolves (smelts, survives, or is destroyed) and the entry is
-// removed either way — no re-arming. readyAt is a tick count (state.tick),
-// not a millisecond timestamp.
+// an item dumped on a furnace tile, tracked separately from state.items so
+// an in-progress job and the furnace obstacle can coexist without
+// conflicting with the normal item layer — see systems/smelting.ts (and its
+// CampfireJob counterpart below). The player can pick the original `item`
+// back up any time before readyAt; once it passes, the job resolves
+// (smelts, survives, or is destroyed) and the entry is removed either way —
+// no re-arming. readyAt is a tick count (state.tick), not a millisecond
+// timestamp.
 export interface Smelter extends Point {
   item: ItemType;
+  readyAt: number;
+}
+
+// an item (or, unlike a furnace job, an obstacle — wood burns to coal too)
+// dumped on a campfire tile, tracked separately from state.items for the
+// same reason as Smelter above — see systems/cooking.ts. `item` is a
+// CarryType rather than ItemType since wood (an ObstacleType) can be
+// dumped in. The player can pick the original `item` back up any time
+// before readyAt; once it passes, the job resolves (cooks, burns, or is
+// destroyed) and the entry is removed either way — no re-arming.
+export interface CampfireJob extends Point {
+  item: CarryType;
   readyAt: number;
 }
 
@@ -275,8 +282,8 @@ export interface GameState {
   refs: GameRefs;
 
   // count of simulation ticks elapsed (see game.ts's simulateTick) — the
-  // clock that seeds/smelters/berryBushes readyAt (and nothing else) is
-  // measured against, instead of a wall-clock timestamp
+  // clock that smelters/campfireJobs/berryBushes readyAt (and nothing else)
+  // is measured against, instead of a wall-clock timestamp
   tick: number;
 
   seed: number;
@@ -285,12 +292,14 @@ export interface GameState {
   floor: Map<string, FloorType>;
   obstacles: Map<string, ObstacleType>;
   items: Map<string, Item>;
-  seeds: Map<string, PlantedSeed>;
   smelters: Map<string, Smelter>;
   // positions of every furnace obstacle, kept in sync by setObstacle — lets
   // the per-frame render loop draw the flickering firebox glow (render.ts)
   // without scanning the whole state.obstacles map every frame
   furnaces: Map<string, Point>;
+  // campfire counterparts of smelters/furnaces above — see systems/cooking.ts
+  campfireJobs: Map<string, CampfireJob>;
+  campfires: Map<string, Point>;
   // every tree obstacle (the trunk cell), same kept-in-sync-by-setObstacle
   // pattern as furnaces above — lets the per-frame y-sorted render pass
   // draw each tree's canopy, and attemptPlayerAttack/updateProjectiles

@@ -42,7 +42,8 @@ import {
 import { heldDir, setupPlayerInput } from './input/player-input';
 import { updateEnemy } from './systems/ai';
 import { updateProjectiles } from './systems/combat';
-import { updateBerryBushes, updateSeeds } from './systems/farming';
+import { updateBerryBushes } from './systems/farming';
+import { updateCampfireJobs } from './systems/cooking';
 import { updateSmelters } from './systems/smelting';
 import { createTickClock, drainTicks } from './systems/ticker';
 import {
@@ -363,9 +364,9 @@ export function initColonyGame(): void {
       else player.path = [];
     }
 
-    updateSeeds(state);
     updateBerryBushes(state);
     updateSmelters(state);
+    updateCampfireJobs(state);
     updateProjectiles(state, hud, now);
     for (const enemy of state.enemies)
       updateEnemy(state, hud, enemy, now, walkableFn);

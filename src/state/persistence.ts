@@ -20,6 +20,7 @@
 import type {
   BerryBush,
   Cactus,
+  CampfireJob,
   Dir,
   EnemyType,
   FloorType,
@@ -28,7 +29,6 @@ import type {
   Item,
   ItemType,
   ObstacleType,
-  PlantedSeed,
   Player,
   Point,
   Smelter,
@@ -49,7 +49,7 @@ const SAVE_KEY = 'project-survival-save-v1';
 // 'dirt' ObstacleType, also reclaimed as a FloorType. Both are deliberately
 // left unassigned rather than reused, so there's no ambiguity decoding an
 // old save. 6 keeps its old id across the fiber -> berryBush rename, same
-// obstacle, new name.
+// obstacle, new name. 9 (campfire) is the next free id after 8.
 const OBSTACLE_TO_ID: Record<ObstacleType, number> = {
   stone: 1,
   furnace: 3,
@@ -57,6 +57,7 @@ const OBSTACLE_TO_ID: Record<ObstacleType, number> = {
   berryBush: 6,
   tree: 7,
   cactus: 8,
+  campfire: 9,
 };
 const ID_TO_OBSTACLE: (ObstacleType | undefined)[] = [
   undefined,
@@ -68,6 +69,7 @@ const ID_TO_OBSTACLE: (ObstacleType | undefined)[] = [
   'berryBush',
   'tree',
   'cactus',
+  'campfire',
 ];
 
 function encodeObstacleGrid(obstacles: Map<string, ObstacleType>): string {
@@ -85,6 +87,7 @@ function decodeObstacleGrid(
 ): {
   obstacles: Map<string, ObstacleType>;
   furnaces: Map<string, { x: number; y: number }>;
+  campfires: Map<string, { x: number; y: number }>;
   trees: Map<string, Tree>;
   cacti: Map<string, Cactus>;
   berryBushes: Map<string, BerryBush>;
@@ -92,6 +95,7 @@ function decodeObstacleGrid(
   const bytes = base64ToBytes(b64);
   const obstacles = new Map<string, ObstacleType>();
   const furnaces = new Map<string, { x: number; y: number }>();
+  const campfires = new Map<string, { x: number; y: number }>();
   const trees = new Map<string, Tree>();
   const cacti = new Map<string, Cactus>();
   const berryBushes = new Map<string, BerryBush>();
@@ -102,6 +106,7 @@ function decodeObstacleGrid(
       const key = x + ',' + y;
       obstacles.set(key, type);
       if (type === 'furnace') furnaces.set(key, { x, y });
+      if (type === 'campfire') campfires.set(key, { x, y });
       // a tree/cactus's hp isn't persisted — makeTreeAt/makeCactusAt always
       // start at full hp, so a half-chopped one just resets on reload.
       // Low-stakes (both are rare, hp isn't precious state) and simpler
@@ -116,7 +121,7 @@ function decodeObstacleGrid(
         berryBushes.set(key, makeBerryBushAt(x, y, tick));
     }
   }
-  return { obstacles, furnaces, trees, cacti, berryBushes };
+  return { obstacles, furnaces, campfires, trees, cacti, berryBushes };
 }
 
 // same dense one-byte-per-cell approach as the obstacle grid above, its own
@@ -176,10 +181,12 @@ function base64ToBytes(b64: string): Uint8Array {
 // space on all the empty cells — instead each item is 3 plain numbers (x,
 // y, item-type id) flattened into one array, which drops the repeated
 // "x"/"y"/"type" object keys and the redundant "x,y" string key that the
-// old [key, {x,y,type}][] shape paid for on every entry
+// old [key, {x,y,type}][] shape paid for on every entry. ids 1 and 2 are
+// retired (used to be 'energy'/'energySeed', both removed) — left
+// deliberately unassigned rather than reused, same convention as
+// OBSTACLE_TO_ID above. rawMeat/meat/coal are added at the next free ids
+// after the previous max (9).
 const ITEM_TO_ID: Record<ItemType, number> = {
-  energy: 1,
-  energySeed: 2,
   ore: 3,
   ingot: 4,
   sword: 5,
@@ -187,11 +194,14 @@ const ITEM_TO_ID: Record<ItemType, number> = {
   cactusFruit: 7,
   berry: 8,
   poop: 9,
+  rawMeat: 10,
+  meat: 11,
+  coal: 12,
 };
 const ID_TO_ITEM: (ItemType | undefined)[] = [
   undefined,
-  'energy',
-  'energySeed',
+  undefined,
+  undefined,
   'ore',
   'ingot',
   'sword',
@@ -199,6 +209,9 @@ const ID_TO_ITEM: (ItemType | undefined)[] = [
   'cactusFruit',
   'berry',
   'poop',
+  'rawMeat',
+  'meat',
+  'coal',
 ];
 
 function encodeItems(items: Map<string, Item>): number[] {
@@ -252,17 +265,19 @@ interface SavedPlayer {
 interface SaveData {
   seed: number;
   // saved and restored verbatim (unlike the old wall-clock timers this
-  // replaced) so seeds/smelters readyAt — measured in ticks — stays valid
-  // across a reload instead of desyncing against a fresh performance.now()
-  // epoch
+  // replaced) so smelters/campfireJobs readyAt — measured in ticks — stays
+  // valid across a reload instead of desyncing against a fresh
+  // performance.now() epoch
   tick: number;
   tilesGrid: string;
   // absent on saves from before the floor layer existed — decodeFloorGrid
   // treats that as an empty floor map
   floorGrid?: string;
   groundItems: number[];
-  seeds: [string, PlantedSeed][];
   smelters: [string, Smelter][];
+  // absent on saves from before the campfire/cooking system existed —
+  // loadGame defaults to no jobs in progress
+  campfireJobs?: [string, CampfireJob][];
   enemies: SavedEnemy[];
   player: SavedPlayer;
   zoomIndex: number;
@@ -275,8 +290,8 @@ export function saveGame(state: GameState): void {
     tilesGrid: encodeObstacleGrid(state.obstacles),
     floorGrid: encodeFloorGrid(state.floor),
     groundItems: encodeItems(state.items),
-    seeds: Array.from(state.seeds.entries()),
     smelters: Array.from(state.smelters.entries()),
+    campfireJobs: Array.from(state.campfireJobs.entries()),
     // the training dummy (Infinity hp, doesn't survive JSON) is re-created
     // fresh on load instead of being persisted, see loadGame below
     enemies: state.enemies
@@ -335,10 +350,8 @@ export function loadGame(refs: GameRefs): GameState | null {
 
   const map = buildMap(MAP_W, MAP_H);
   paintOasis(map, data.seed);
-  const { obstacles, furnaces, trees, cacti, berryBushes } = decodeObstacleGrid(
-    data.tilesGrid,
-    data.tick ?? 0,
-  );
+  const { obstacles, furnaces, campfires, trees, cacti, berryBushes } =
+    decodeObstacleGrid(data.tilesGrid, data.tick ?? 0);
   const floor = decodeFloorGrid(data.floorGrid);
 
   const sp = data.player;
@@ -396,9 +409,10 @@ export function loadGame(refs: GameRefs): GameState | null {
     floor,
     obstacles,
     items: decodeItems(data.groundItems),
-    seeds: new Map(data.seeds),
     smelters: new Map(data.smelters),
     furnaces,
+    campfireJobs: new Map(data.campfireJobs ?? []),
+    campfires,
     trees,
     cacti,
     berryBushes,

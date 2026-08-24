@@ -12,7 +12,7 @@ import type {
 import {
   BERRY_BUSH_GROW_TICKS,
   carryColor,
-  ENERGY_SEED_GROW_TICKS,
+  carryColors,
   FLOOR_DEFS,
   FOOD_HEAL_AMOUNTS,
   OBSTACLE_DEFS,
@@ -53,7 +53,7 @@ import {
   spendMoveHp,
 } from './combat';
 import { tryCombine } from './combine';
-import { plantSeed } from './farming';
+import { dumpInCampfire } from './cooking';
 import { dumpInFurnace } from './smelting';
 import { showToast, updateHud } from '../ui/hud';
 
@@ -166,19 +166,15 @@ export function doPickup(
   const { player } = state;
   const key = x + ',' + y;
 
-  // an item (e.g. energy a seed grew, or a berry a bush grew) sits on top
-  // of the obstacle layer, so it takes priority: picking up harvests the
-  // item and leaves the seed/bush that produced it behind
+  // a loose item (e.g. a berry a bush grew) sits on top of the obstacle
+  // layer, so it takes priority: picking up harvests the item and leaves
+  // whatever produced it (a berryBush) behind
   const item = state.items.get(key);
   if (item) {
     state.items.delete(key);
     player.held = item.type;
-    // harvesting the energy a seed produced restarts its grow timer, so
-    // the same seed keeps producing as long as it's kept picked
-    const producingSeed = state.seeds.get(key);
-    if (producingSeed)
-      producingSeed.readyAt = state.tick + ENERGY_SEED_GROW_TICKS;
-    // same idea for a berry harvested off a still-standing berryBush
+    // harvesting a berry restarts its still-standing berryBush's grow
+    // timer, so the same bush keeps producing as long as it's kept picked
     const producingBush = state.berryBushes.get(key);
     if (producingBush)
       producingBush.readyAt = state.tick + BERRY_BUSH_GROW_TICKS;
@@ -208,17 +204,16 @@ export function doPickup(
     return;
   }
 
-  // no loose item here — a bare (not-yet-grown, or already-harvested)
-  // planted energySeed is reachable and pickable in its own right
-  const seed = state.seeds.get(key);
-  if (seed) {
-    state.seeds.delete(key);
-    player.held = 'energySeed';
+  // same cancel-in-progress-job pickup as the furnace above, for a campfire
+  const campfireJob = state.campfireJobs.get(key);
+  if (campfireJob) {
+    state.campfireJobs.delete(key);
+    player.held = campfireJob.item;
     spawnFloatingText(
       state,
       player,
-      'picked up energySeed',
-      carryColor('energySeed'),
+      'picked up ' + campfireJob.item,
+      carryColor(campfireJob.item),
     );
     updateHud(state, hud);
     return;
@@ -299,56 +294,59 @@ export function doPlace(
     return;
   }
 
-  // planting an energySeed requires bare soil floor with nothing else on
-  // the cell — checked before the generic obstacle/combine tail below
-  // since energySeed has no combine recipe, so it would otherwise land as
-  // a plain loose item there instead of getting planted (see
-  // systems/farming.ts). berryBush needs no equivalent branch — it's
-  // placed as a normal obstacle (see the tail below/setObstacle) and grows
-  // berries on its own once standing on soil, see updateBerryBushes.
-  if (
-    held === 'energySeed' &&
-    floorAt(state, x, y) === 'soil' &&
-    !state.obstacles.has(key) &&
-    !state.items.has(key) &&
-    !state.seeds.has(key) &&
-    !state.smelters.has(key)
-  ) {
-    plantSeed(state, x, y);
-    spawnFloatingText(state, player, 'planted ' + held, carryColor(held));
-    player.held = null;
-    updateHud(state, hud);
-    return;
-  }
-
-  // furnace allows an item to drop straight onto it without needing an
-  // empty cell or a combine recipe — the dump is consumed, what's left
-  // depends on the item, see systems/smelting.ts. Anything else held that
-  // reaches here (an item not planted or dumped) just sits as a plain loose
-  // item.
-  if (!(held in OBSTACLE_DEFS) && openForItem(state, x, y)) {
-    const item = held as ItemType;
-    if (state.obstacles.get(key) === 'furnace') {
-      const outcome = dumpInFurnace(state, x, y, item);
+  // furnace/campfire both allow an item to drop straight onto them without
+  // needing an empty cell or a combine recipe — the dump is consumed, what's
+  // left depends on the item (see systems/smelting.ts, systems/cooking.ts).
+  // A campfire additionally accepts a held obstacle (wood — see
+  // BURNS_TO_COAL in cooking.ts), so it's checked before the item-only
+  // furnace/plain-drop cases below. Anything else held that reaches here
+  // (an item not dumped anywhere) just sits as a plain loose item.
+  if (openForItem(state, x, y)) {
+    const targetObstacle = state.obstacles.get(key);
+    if (targetObstacle === 'campfire') {
+      const outcome = dumpInCampfire(state, x, y, held);
       const text =
-        outcome === 'smelting'
-          ? 'smelting ' + item
-          : outcome === 'survived'
-            ? 'placed ' + item
-            : 'melting ' + item;
+        outcome === 'cooking'
+          ? 'cooking ' + held
+          : outcome === 'burning'
+            ? 'burning ' + held
+            : 'burning up ' + held;
       spawnFloatingText(
         state,
         player,
         text,
-        outcome === 'destroyed' ? '#ff6b35' : carryColor(item),
+        outcome === 'destroyed' ? '#ff6b35' : carryColors(held).primary,
       );
-    } else {
-      state.items.set(key, { x, y, type: item });
-      spawnFloatingText(state, player, 'placed ' + item, '#ecdfc4');
+      player.held = null;
+      updateHud(state, hud);
+      return;
     }
-    player.held = null;
-    updateHud(state, hud);
-    return;
+    if (!(held in OBSTACLE_DEFS)) {
+      const item = held as ItemType;
+      if (targetObstacle === 'furnace') {
+        const outcome = dumpInFurnace(state, x, y, item);
+        const text =
+          outcome === 'smelting'
+            ? 'smelting ' + item
+            : outcome === 'survived'
+              ? 'placed ' + item
+              : 'melting ' + item;
+        spawnFloatingText(
+          state,
+          player,
+          text,
+          outcome === 'destroyed' ? '#ff6b35' : carryColor(item),
+        );
+      } else {
+        state.items.set(key, { x, y, type: item });
+        spawnFloatingText(state, player, 'placed ' + item, '#ecdfc4');
+      }
+      player.held = null;
+      updateHud(state, hud);
+      return;
+    }
+    // held is an obstacle (e.g. wood) but the target isn't a campfire — not
+    // a valid dump, falls through to the combine/occupancy tail below
   }
 
   const target = occupantAt(state, x, y);
@@ -408,16 +406,16 @@ export function tryPlaceAt(
   const { player } = state;
   if (!terrainWalkable(state, x, y) || !player.held) return;
   const held = player.held;
-  // furnace-dump bypass — occupantAt reports a bare allowItem obstacle
-  // (furnace) as occupied even with nothing dumped in it yet, which would
-  // otherwise wrongly block a plain item drop there via the tryCombine
-  // check below. Planting an energySeed on bare soil needs no equivalent
-  // bypass: soil is a FloorType, so occupantAt already reports an empty
-  // soil cell as unoccupied (see its comment in state/state.ts), and an
-  // already-planted one as 'energySeed' — either way the gate below
-  // resolves correctly on its own.
-  const dropsOnSoil = !(held in OBSTACLE_DEFS) && openForItem(state, x, y);
-  if (!dropsOnSoil) {
+  // furnace/campfire-dump bypass — occupantAt reports a bare allowItem
+  // obstacle (furnace, campfire) as occupied even with nothing dumped in it
+  // yet, which would otherwise wrongly block a drop there via the
+  // tryCombine check below. A campfire additionally accepts a held obstacle
+  // (wood), not just an item, so it gets its own unconditional check rather
+  // than reusing dropsOnItem's `!(held in OBSTACLE_DEFS)` guard (see doPlace).
+  const dropsOnCampfire =
+    state.obstacles.get(x + ',' + y) === 'campfire' && openForItem(state, x, y);
+  const dropsOnItem = !(held in OBSTACLE_DEFS) && openForItem(state, x, y);
+  if (!dropsOnCampfire && !dropsOnItem) {
     const target = occupantAt(state, x, y);
     if (target !== null && tryCombine(held, target) === null) return;
   }

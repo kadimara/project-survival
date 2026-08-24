@@ -50,9 +50,10 @@ export function patchGroundAtlasTile(
     // top (drawn next, overlay-only) paints its own bordered square over
     // it, so the floor's flat color still peeks through around the edges
     drawFloorOverlay(ctx, TILE, sx, sy, FLOOR_DEFS[floorType].colors);
-    // the furnace body bakes in as plain stone — only its firebox glow is
-    // drawn per-frame on top, so it can flicker (see render.ts)
-    const obstacleType = type === 'furnace' ? 'stone' : type;
+    // the furnace/campfire body bakes in as plain stone — only its firebox
+    // glow is drawn per-frame on top, so it can flicker (see render.ts)
+    const obstacleType =
+      type === 'furnace' || type === 'campfire' ? 'stone' : type;
     if (obstacleType === 'tree')
       drawTreeTrunk(ctx, TILE, sx, sy, OBSTACLE_DEFS.tree.colors);
     else if (obstacleType === 'cactus')
@@ -76,7 +77,8 @@ export function patchGroundAtlasTile(
       );
     return;
   }
-  if (type === 'furnace') drawObstacle(ctx, TILE, sx, sy, 'stone');
+  if (type === 'furnace' || type === 'campfire')
+    drawObstacle(ctx, TILE, sx, sy, 'stone');
   else if (type === 'tree') {
     drawTile(ctx, TILE, DIRT, sx, sy);
     drawTreeTrunk(ctx, TILE, sx, sy, OBSTACLE_DEFS.tree.colors);

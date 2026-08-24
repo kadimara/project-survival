@@ -103,11 +103,27 @@ export const OBSTACLE_DEFS: Record<
   // built by combining two stone obstacles (see combine.ts) — not part of
   // procedural generation. allowItem lets any item be dumped straight onto
   // it (see systems/smelting.ts)
+  // built by combining a placed stone obstacle with coal (see combine.ts,
+  // coal itself is a campfire product — see systems/cooking.ts) — not part
+  // of procedural generation. allowItem lets any item be dumped straight
+  // onto it (see systems/smelting.ts)
   furnace: {
     solid: true,
     pickable: true,
     allowItem: true,
     colors: { primary: '#c65a2e', secondary: '#5a2c17' },
+  },
+  // the furnace's cooler sibling — built by combining a placed stone
+  // obstacle with wood (see combine.ts). allowItem lets rawMeat/meat/wood
+  // be dumped onto it for cooking (see systems/cooking.ts); not as hot as
+  // the furnace, so its glow (drawCampfireGlow in rendering.ts) is dimmer/
+  // smaller than drawFurnaceGlow's. Deliberately a duller, more ember-red
+  // pair than furnace's brighter orange, so the two read apart at a glance.
+  campfire: {
+    solid: true,
+    pickable: true,
+    allowItem: true,
+    colors: { primary: '#8a3a22', secondary: '#4a1f12' },
   },
   // a diggable obstacle like stone/soil, not yet consumed by any recipe —
   // seeded near spawn (see buildWorldLayers in state/state.ts) so it's
@@ -217,17 +233,30 @@ export const ITEM_DEFS: Record<
   ItemType,
   { colors: { primary: string; secondary: string } }
 > = {
-  energy: {
-    colors: { primary: '#e8c44f', secondary: '#a8862f' },
+  // dropped by a killed enemy (see ENEMY_DEFS' dropItem below) — a raw pink-
+  // red, deliberately weaker/duller than meat's cooked brown below so the
+  // two read as "before/after" the campfire (see systems/cooking.ts).
+  // Edible as-is for a smaller heal than the cooked version (see
+  // FOOD_HEAL_AMOUNTS below) — cooking it into meat is an upgrade, not a
+  // requirement.
+  rawMeat: {
+    colors: { primary: '#c96a6a', secondary: '#7a3535' },
   },
-  // same colors as energy on purpose — a planted seed and the energy it
-  // grows are distinguished by render shape (scattered dots vs a solid
-  // square, see render.ts), not by color
-  energySeed: {
-    colors: { primary: '#e8c44f', secondary: '#a8862f' },
+  // rawMeat cooked on a campfire (see systems/cooking.ts) — a warm cooked
+  // brown, distinct from rawMeat's raw pink-red. Left too long on the
+  // campfire, it burns down to coal instead (see COOKS_TO_MEAT/
+  // BURNS_TO_COAL in systems/cooking.ts).
+  meat: {
+    colors: { primary: '#8a5a3a', secondary: '#4f3120' },
   },
-  // ore and the ingot it smelts into share colors on purpose, same as
-  // energy/energySeed above
+  // a campfire byproduct — burnt meat or burnt wood (see BURNS_TO_COAL in
+  // systems/cooking.ts) — and the furnace's fuel (see RECIPES in
+  // systems/combine.ts). A near-black char color, unlike anything else in
+  // ITEM_DEFS.
+  coal: {
+    colors: { primary: '#3a3a3a', secondary: '#1a1a1a' },
+  },
+  // ore and the ingot it smelts into share colors on purpose
   ore: {
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
@@ -236,9 +265,9 @@ export const ITEM_DEFS: Record<
   },
   // crafted from ingot + ingot (see systems/combine.ts) — see WEAPON_DEFS
   // below for how holding it changes the player's attack. Shares colors
-  // with ore/ingot on purpose (same lineage: ore -> ingot -> sword), same
-  // idea as energy/energySeed above; drawn with its own blade-shaped icon
-  // rather than the generic item square (see drawSwordIcon in rendering.ts)
+  // with ore/ingot on purpose (same lineage: ore -> ingot -> sword); drawn
+  // with its own blade-shaped icon rather than the generic item square (see
+  // drawSwordIcon in rendering.ts)
   sword: {
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
@@ -275,17 +304,14 @@ export const ITEM_DEFS: Record<
   },
 };
 
-// ---- soil farming: two independent ways soil produces food (see
-// systems/farming.ts) — an energySeed the player explicitly planted, or a
-// berryBush obstacle simply standing on soil floor — each spawn an item on
-// the same cell after their own grow-tick count (if the cell doesn't
-// already have one); harvesting that item restarts the timer, so either
-// keeps producing renewably as long as it's kept picked. Measured in
-// ticks, like everything else that gates on state.tick, rather than
-// milliseconds ----
-export const ENERGY_SEED_GROW_TICKS = 40; // ~10s at the current TICK_MS
-// a bit faster than ENERGY_SEED_GROW_TICKS, since berries are the starter/
-// staple food rather than a mid-tier crafting resource
+// ---- soil farming: a berryBush obstacle standing on soil floor spawns a
+// berry item on its own cell after BERRY_BUSH_GROW_TICKS (if the cell
+// doesn't already have one, see systems/farming.ts); harvesting it restarts
+// the timer, so it keeps producing renewably as long as it's kept picked.
+// Measured in ticks, like everything else that gates on state.tick, rather
+// than milliseconds ----
+// the starter/staple food, so a bit faster than the furnace/campfire timers
+// below (a mid-tier crafting resource shouldn't be the fast option)
 export const BERRY_BUSH_GROW_TICKS = 30; // ~7.5s at the current TICK_MS
 
 // ---- furnace: ore placed on a furnace tile becomes an ingot after
@@ -296,13 +322,35 @@ export const BERRY_BUSH_GROW_TICKS = 30; // ~7.5s at the current TICK_MS
 export const ORE_SMELT_TICKS = 20; // ~5s at the current TICK_MS
 export const ITEM_MELT_TICKS = 8; // ~2s at the current TICK_MS
 
-// looks up the primary color for anything the player can carry, whichever
-// def table (OBSTACLE_DEFS, FLOOR_DEFS, or ITEM_DEFS) it belongs to
+// ---- campfire: the furnace's cooler sibling (see systems/cooking.ts).
+// rawMeat placed on a campfire becomes meat after RAW_MEAT_COOK_TICKS;
+// meat or wood left there burns down to coal after CAMPFIRE_BURN_TICKS;
+// anything else placed there is destroyed after CAMPFIRE_DESTROY_TICKS
+// with nothing left (no survivor case, unlike the furnace's ingot). All
+// three are slower than the furnace's equivalents above — "not as hot" —
+// first-pass balance numbers, easy to retune. Same pick-back-up-to-cancel
+// convention as the furnace. ----
+export const RAW_MEAT_COOK_TICKS = 12; // ~3s at the current TICK_MS
+export const CAMPFIRE_BURN_TICKS = 16; // ~4s at the current TICK_MS
+export const CAMPFIRE_DESTROY_TICKS = 10; // ~2.5s at the current TICK_MS
+
+// looks up the full color pair for anything the player can carry, whichever
+// def table (OBSTACLE_DEFS, FLOOR_DEFS, or ITEM_DEFS) it belongs to — used
+// by render.ts to draw an in-progress campfire job, which (unlike a furnace
+// job) can hold an obstacle (wood), not just an item
+export function carryColors(kind: CarryType): {
+  primary: string;
+  secondary: string;
+} {
+  if (kind in OBSTACLE_DEFS) return OBSTACLE_DEFS[kind as ObstacleType].colors;
+  if (kind in FLOOR_DEFS) return FLOOR_DEFS[kind as FloorType].colors;
+  return ITEM_DEFS[kind as ItemType].colors;
+}
+
+// looks up just the primary color — most callers (floating text, etc.)
+// only need this
 export function carryColor(kind: CarryType): string {
-  if (kind in OBSTACLE_DEFS)
-    return OBSTACLE_DEFS[kind as ObstacleType].colors.primary;
-  if (kind in FLOOR_DEFS) return FLOOR_DEFS[kind as FloorType].colors.primary;
-  return ITEM_DEFS[kind as ItemType].colors.primary;
+  return carryColors(kind).primary;
 }
 
 // ---- player: fixed worker+soldier combined role — picks up/places
@@ -331,7 +379,7 @@ export const PLAYER_WATER_MOVE_TICKS = 2;
 
 // a weapon is "equipped" simply by being held (see attemptPlayerAttack in
 // systems/player-actions.ts) — no separate equip slot, so wielding one
-// means your one carry slot isn't free for hauling ore/energy/etc. Only
+// means your one carry slot isn't free for hauling ore/meat/etc. Only
 // item types listed here override the unarmed PLAYER_ATK_DAMAGE/COOLDOWN_TICKS
 // above; anything else held attacks unarmed. `range` (optional, in tiles)
 // turns the weapon into a ranged attack: game.ts's attack-chase loop uses
@@ -377,14 +425,19 @@ export const PLAYER_MOVE_HP_COST = 1;
 // hp spent per landed player attack (unarmed or with a weapon), same
 // exertion-cost mechanic as PLAYER_MOVE_HP_COST
 export const PLAYER_ATK_HP_COST = 1;
-// hp restored by using (eating) a held energy item, see useHeldItem in
-// systems/player-actions.ts
-export const ENERGY_HEAL_AMOUNT = 50;
+// hp restored by using (eating) a held rawMeat item — weaker than
+// MEAT_HEAL_AMOUNT below, since cooking it on a campfire (see
+// systems/cooking.ts) is the upgrade path, not a requirement
+export const RAW_MEAT_HEAL_AMOUNT = 20;
+// hp restored by using (eating) a held meat item, see useHeldItem in
+// systems/player-actions.ts — the best healing option, same role energy
+// used to fill
+export const MEAT_HEAL_AMOUNT = 50;
 // hp restored by using (eating) a held cactusFruit item, same mechanic as
-// ENERGY_HEAL_AMOUNT above (see useHeldItem in systems/player-actions.ts)
+// MEAT_HEAL_AMOUNT above (see useHeldItem in systems/player-actions.ts)
 export const CACTUS_FRUIT_HEAL_AMOUNT = 50;
 // hp restored by using (eating) a held berry item — deliberately weaker
-// than ENERGY_HEAL_AMOUNT/CACTUS_FRUIT_HEAL_AMOUNT, since berries are the
+// than MEAT_HEAL_AMOUNT/CACTUS_FRUIT_HEAL_AMOUNT, since berries are the
 // reliable renewable staple (see systems/farming.ts) rather than the best
 // healing option. Eating any food (including berries) while already at max
 // hp produces a poop item instead of healing, see useHeldItem.
@@ -397,7 +450,8 @@ export const BERRY_HEAL_AMOUNT = 25;
 // "what counts as food" stays in one place. Anything not listed here isn't
 // food to either of them.
 export const FOOD_HEAL_AMOUNTS: Partial<Record<ItemType, number>> = {
-  energy: ENERGY_HEAL_AMOUNT,
+  rawMeat: RAW_MEAT_HEAL_AMOUNT,
+  meat: MEAT_HEAL_AMOUNT,
   cactusFruit: CACTUS_FRUIT_HEAL_AMOUNT,
   berry: BERRY_HEAL_AMOUNT,
 };
@@ -486,7 +540,7 @@ export const ENEMY_DEFS: Record<
     // the map over repeated wander cycles, not just nearby
     foodSenseRadius: 12,
     hopHeight: 4,
-    dropItem: 'energy',
+    dropItem: 'rawMeat',
     // same sandstone as the guardian on purpose (the user asked for "the
     // same color") — a smaller inset (below) is what tells them apart
     // visually
@@ -516,7 +570,7 @@ export const ENEMY_DEFS: Record<
     fleeRadius: 0,
     foodSenseRadius: 0,
     hopHeight: 0,
-    dropItem: 'energy',
+    dropItem: 'rawMeat',
     colors: { primary: '#9c8465', secondary: '#5e4b34' },
     inset: 3,
   },

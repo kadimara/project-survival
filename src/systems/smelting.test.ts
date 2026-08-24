@@ -10,7 +10,7 @@ describe('dumpInFurnace', () => {
     expect(state.smelters.get('1,1')?.readyAt).toBe(1000 + ORE_SMELT_TICKS);
   });
 
-  it.each(['ingot', 'energy', 'energySeed'] as const)(
+  it.each(['ingot', 'berry', 'coal'] as const)(
     'uses ITEM_MELT_TICKS for %s',
     (item) => {
       const state = createTestGameState({ tick: 1000 });
@@ -24,8 +24,8 @@ describe('dumpInFurnace', () => {
     expect(dumpInFurnace(state, 0, 0, 'ore')).toBe('smelting');
     expect(dumpInFurnace(state, 1, 0, 'sword')).toBe('smelting');
     expect(dumpInFurnace(state, 4, 0, 'ingot')).toBe('survived');
-    expect(dumpInFurnace(state, 2, 0, 'energy')).toBe('destroyed');
-    expect(dumpInFurnace(state, 3, 0, 'energySeed')).toBe('destroyed');
+    expect(dumpInFurnace(state, 2, 0, 'berry')).toBe('destroyed');
+    expect(dumpInFurnace(state, 3, 0, 'coal')).toBe('destroyed');
   });
 
   it('overwrites an existing job at the same cell with no guard', () => {
@@ -83,7 +83,7 @@ describe('updateSmelters', () => {
     expect(state.items.get('1,1')).toEqual({ x: 1, y: 1, type: 'ingot' });
   });
 
-  it.each(['energy', 'energySeed'] as const)(
+  it.each(['berry', 'coal'] as const)(
     'leaves nothing behind when %s is destroyed',
     (item) => {
       const state = createTestGameState({ tick: 1000 });
@@ -96,7 +96,7 @@ describe('updateSmelters', () => {
 
   it('always removes the smelter entry on resolution, including the destroyed case', () => {
     const state = createTestGameState({ tick: 1000 });
-    dumpInFurnace(state, 1, 1, 'energy');
+    dumpInFurnace(state, 1, 1, 'berry');
     state.tick = 1000 + ITEM_MELT_TICKS;
     updateSmelters(state);
     expect(state.smelters.has('1,1')).toBe(false);

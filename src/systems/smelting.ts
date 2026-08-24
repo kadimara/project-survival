@@ -1,8 +1,9 @@
 // Furnace-based smelting: any item can be dumped onto an empty furnace
 // obstacle (gated by openForItem in state/state.ts), tracked in
-// state.smelters rather than state.items — mirrors how
-// systems/farming.ts tracks a planted seed separately from the energy it
-// grows. While a job is running the player can pick the original item
+// state.smelters rather than state.items so an in-progress job and the
+// furnace obstacle itself can coexist without conflicting with the normal
+// item layer (see systems/cooking.ts for the campfire's near-identical
+// counterpart). While a job is running the player can pick the original item
 // straight back up (see doPickup in player-actions.ts), canceling it. Once
 // its timer fires: SMELTS_TO_INGOT items (ore, and a sword melted back
 // down) become an ingot, a survivor (currently just ingot) reappears
@@ -12,7 +13,7 @@ import { ITEM_MELT_TICKS, ORE_SMELT_TICKS } from '../constants';
 
 export type FurnaceOutcome = 'smelting' | 'survived' | 'destroyed';
 
-// items not listed here (energy, energySeed) melt away with nothing left
+// items not listed here melt away with nothing left
 const FURNACE_SURVIVORS: ReadonlySet<ItemType> = new Set(['ingot']);
 // items that resolve into a fresh ingot once their timer fires — the
 // ore -> ingot -> sword lineage is reversible via the furnace

@@ -4,6 +4,7 @@
 import type { GameState, Point } from '../types/types';
 import {
   carryColor,
+  carryColors,
   ENEMY_DEFS,
   FOOTPRINT_FADE_MS,
   FOOTPRINT_MAX_ALPHA,
@@ -25,11 +26,11 @@ import { obstacleAt } from '../state/state';
 import {
   COLORS,
   drawBowIcon,
+  drawCampfireGlow,
   drawFurnaceGlow,
   drawHpBar,
   drawItemIcon,
   drawProjectile,
-  drawScatteredDots,
   drawSquareEntity,
   drawStepDarken,
   drawSwordIcon,
@@ -38,8 +39,9 @@ import {
 } from './rendering';
 import { DIRT, OASIS } from '../worldgen/worldgen';
 
-// per-tile pseudo-random phase so several furnaces don't flicker in lockstep
-function furnacePhase(x: number, y: number): number {
+// per-tile pseudo-random phase so several furnaces/campfires don't flicker
+// in lockstep with each other
+function firePhase(x: number, y: number): number {
   return (x * 12.9898 + y * 78.233) % (Math.PI * 2);
 }
 
@@ -104,7 +106,17 @@ export function render(state: GameState, now: number): void {
       sy = furnace.y * TILE - camY;
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
-    drawFurnaceGlow(ctx, TILE, sx, sy, now, furnacePhase(furnace.x, furnace.y));
+    drawFurnaceGlow(ctx, TILE, sx, sy, now, firePhase(furnace.x, furnace.y));
+  }
+
+  // campfire counterpart of the furnace glow loop above — same baked-as-
+  // stone body, its own dimmer/smaller per-frame glow (see drawCampfireGlow)
+  for (const campfire of state.campfires.values()) {
+    const sx = campfire.x * TILE - camX,
+      sy = campfire.y * TILE - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    drawCampfireGlow(ctx, TILE, sx, sy, now, firePhase(campfire.x, campfire.y));
   }
 
   // cactus body/fruit are baked into the ground atlas above (see
@@ -161,16 +173,6 @@ export function render(state: GameState, now: number): void {
     ctx.fill();
   }
 
-  // drawn before groundItems so a seed's scattered dots sit visually
-  // "under" the energy square it produces, when both are on the same cell
-  for (const seed of state.seeds.values()) {
-    const sx = seed.x * TILE - camX,
-      sy = seed.y * TILE - camY;
-    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
-      continue;
-    drawScatteredDots(ctx, sx, sy, ITEM_DEFS.energySeed.colors.primary);
-  }
-
   // a furnace job mid-timer renders exactly like the item it started
   // from, so the cell reads as "still that item, just working" until it
   // resolves into whatever's left (see systems/smelting.ts)
@@ -186,6 +188,24 @@ export function render(state: GameState, now: number): void {
       sy,
       smelter.item,
       ITEM_DEFS[smelter.item].colors,
+    );
+  }
+
+  // campfire counterpart of the smelter loop above — a job's `item` can be
+  // an obstacle (wood), not just an ItemType, so colors come from
+  // carryColors rather than ITEM_DEFS directly
+  for (const campfireJob of state.campfireJobs.values()) {
+    const sx = campfireJob.x * TILE - camX,
+      sy = campfireJob.y * TILE - camY;
+    if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
+      continue;
+    drawItemIcon(
+      ctx,
+      TILE,
+      sx,
+      sy,
+      campfireJob.item,
+      carryColors(campfireJob.item),
     );
   }
 

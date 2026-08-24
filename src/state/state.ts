@@ -146,6 +146,8 @@ export function setObstacle(
   }
   if (type === 'furnace') state.furnaces.set(key, { x, y });
   else state.furnaces.delete(key);
+  if (type === 'campfire') state.campfires.set(key, { x, y });
+  else state.campfires.delete(key);
   if (type === 'tree') state.trees.set(key, makeTreeAt(x, y));
   else state.trees.delete(key);
   if (type === 'cactus') state.cacti.set(key, makeCactusAt(x, y));
@@ -256,19 +258,12 @@ export function itemAt(
   return state.items.get(x + ',' + y);
 }
 
-// single occupancy check across both layers (plus a planted-but-not-yet-
-// grown energySeed, see below) — replaces the repeated `!isSolid(...) &&
-// !itemAt(...)` pattern that used to appear at every call site that just
-// needs to know "is anything here". For an obstacle that allows an item on
-// top of it (furnace), an item sitting there takes priority over the
-// obstacle itself, so combining/picking up targets the item rather than the
-// furnace underneath. A planted energySeed on bare soil (no energy grown
-// yet) is reported as 'energySeed' — soil itself is a FloorType, so a bare
-// planted seed is otherwise invisible to this obstacle/item-only check, and
-// without this fallback a held obstacle could get silently placed on top of
-// it (see doPlace/tryPlaceAt in systems/player-actions.ts). A berryBush
-// needs no equivalent fallback — it's a normal solid obstacle itself, so
-// the obstacle check above already reports it.
+// single occupancy check across both layers — replaces the repeated
+// `!isSolid(...) && !itemAt(...)` pattern that used to appear at every call
+// site that just needs to know "is anything here". For an obstacle that
+// allows an item on top of it (furnace, campfire), an item sitting there
+// takes priority over the obstacle itself, so combining/picking up targets
+// the item rather than the furnace/campfire underneath.
 export function occupantAt(
   state: GameState,
   x: number,
@@ -279,18 +274,16 @@ export function occupantAt(
     return obstacle;
   const item = itemAt(state, x, y)?.type;
   if (item !== undefined) return item;
-  if (obstacle !== undefined) return obstacle;
-  return state.seeds.has(x + ',' + y) ? 'energySeed' : null;
+  return obstacle ?? null;
 }
 
-// true when (x,y) is an obstacle that allows an item on top of it (furnace)
-// and nothing is already sitting there — the direct-placement slot an item
-// can drop into without going through the obstacle/combine check, since
-// occupantAt reports a bare allowItem obstacle as occupied (so pickup/click
-// routing still finds it). Also excludes a cell with a planted (not-yet-
-// grown) energySeed or an in-progress furnace job, both of which live
-// outside state.items and would otherwise get silently shadowed by a new
-// drop.
+// true when (x,y) is an obstacle that allows an item on top of it (furnace,
+// campfire) and nothing is already sitting there — the direct-placement
+// slot an item can drop into without going through the obstacle/combine
+// check, since occupantAt reports a bare allowItem obstacle as occupied (so
+// pickup/click routing still finds it). Also excludes a cell with an
+// in-progress furnace or campfire job, which lives outside state.items and
+// would otherwise get silently shadowed by a new drop.
 export function openForItem(state: GameState, x: number, y: number): boolean {
   const key = x + ',' + y;
   const obstacle = obstacleAt(state, x, y);
@@ -298,8 +291,8 @@ export function openForItem(state: GameState, x: number, y: number): boolean {
     obstacle !== undefined &&
     OBSTACLE_DEFS[obstacle].allowItem &&
     !state.items.has(key) &&
-    !state.seeds.has(key) &&
-    !state.smelters.has(key)
+    !state.smelters.has(key) &&
+    !state.campfireJobs.has(key)
   );
 }
 
@@ -586,9 +579,10 @@ export function regenerateWorld(
   buildGroundAtlas(state.refs, state.map, state.floor, state.obstacles);
   buildWorldMapAtlas(state.refs, state.map, state.floor, state.obstacles);
   state.items.clear();
-  state.seeds.clear();
   state.smelters.clear();
   state.furnaces.clear();
+  state.campfireJobs.clear();
+  state.campfires.clear();
   state.projectiles.length = 0;
   state.footprints.length = 0;
   for (const item of resourceItems)
@@ -636,9 +630,10 @@ export function createGameState(
     floor,
     obstacles,
     items: new Map(),
-    seeds: new Map(),
     smelters: new Map(),
     furnaces: new Map(),
+    campfireJobs: new Map(),
+    campfires: new Map(),
     trees,
     cacti,
     berryBushes,

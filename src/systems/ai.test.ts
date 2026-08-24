@@ -257,7 +257,7 @@ describe('updateEnemy: jerboa flee/forage', () => {
     const state = createTestGameState();
     const hud = createTestHudRefs();
     const jerboa = createTestEnemy(10, 10, { type: 'jerboa' });
-    state.items.set('10,10', { x: 10, y: 10, type: 'energy' });
+    state.items.set('10,10', { x: 10, y: 10, type: 'meat' });
     // 6 tiles away: outside aggroRadius (5), so not sighted, but inside
     // fleeRadius (7), so the flee this triggers doesn't immediately resolve
     // (eat) within the same tick
@@ -267,7 +267,7 @@ describe('updateEnemy: jerboa flee/forage', () => {
     updateEnemy(state, hud, jerboa, 1000, alwaysWalkable);
 
     expect(state.items.has('10,10')).toBe(false);
-    expect(jerboa.carrying).toBe('energy');
+    expect(jerboa.carrying).toBe('meat');
     expect(jerboa.state).toBe('flee');
   });
 
@@ -277,7 +277,7 @@ describe('updateEnemy: jerboa flee/forage', () => {
     const jerboa = createTestEnemy(0, 0, {
       type: 'jerboa',
       state: 'flee',
-      carrying: 'energy',
+      carrying: 'meat',
       hp: 1,
     });
     state.player.tileX = 20; // well past fleeRadius (7)
@@ -285,13 +285,11 @@ describe('updateEnemy: jerboa flee/forage', () => {
 
     updateEnemy(state, hud, jerboa, 1000, alwaysWalkable);
 
-    expect(jerboa.hp).toBe(
-      Math.min(jerboa.maxHp, 1 + FOOD_HEAL_AMOUNTS.energy!),
-    );
+    expect(jerboa.hp).toBe(Math.min(jerboa.maxHp, 1 + FOOD_HEAL_AMOUNTS.meat!));
     expect(jerboa.carrying).toBeNull();
     expect(jerboa.state).toBe('wander');
     const text = state.floatingTexts.at(-1);
-    expect(text?.text).toBe('+' + FOOD_HEAL_AMOUNTS.energy);
+    expect(text?.text).toBe('+' + FOOD_HEAL_AMOUNTS.meat);
     expect(text?.color).toBe('#7fd47f');
   });
 
@@ -302,7 +300,7 @@ describe('updateEnemy: jerboa flee/forage', () => {
       type: 'boulderGuardian',
       home: { x: 10, y: 10 },
     });
-    state.items.set('10,10', { x: 10, y: 10, type: 'energy' });
+    state.items.set('10,10', { x: 10, y: 10, type: 'meat' });
     state.player.tileX = 11;
     state.player.tileY = 10; // adjacent — sighted
 
