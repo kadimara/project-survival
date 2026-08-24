@@ -1,6 +1,7 @@
 // Raw player input: tracks which movement keys are currently held. Action
 // resolution (what a move/click actually does) lives in systems/player-actions.ts.
 import type { Dir, GameState } from '../types/types';
+import { clearAttackTarget } from '../state/state';
 
 const keys: Record<string, boolean> = {};
 const MOVE_KEYS = [
@@ -24,7 +25,7 @@ export function setupPlayerInput(state: GameState): void {
       e.preventDefault();
       state.player.path = [];
       state.player.pendingAction = null;
-      state.player.attackTarget = null;
+      clearAttackTarget(state.player);
     }
     keys[e.key.toLowerCase()] = true;
   });

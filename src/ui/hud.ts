@@ -1,7 +1,7 @@
 // HUD stat bar, toast messages, and the world-map overlay: DOM refs plus
 // pure render/open/close functions.
-import type { GameState, HudRefs } from '../types/types';
-import { WORLD_TILE } from '../constants';
+import type { CarryType, GameState, HudRefs, ItemType } from '../types/types';
+import { FOOD_HEAL_AMOUNTS, WORLD_TILE } from '../constants';
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -12,9 +12,11 @@ function byId<T extends HTMLElement>(id: string): T {
 export function createHudRefs(): HudRefs {
   return {
     statHp: byId('stat-hp'),
-    statCarry: byId('stat-carry'),
+    statCarryLeft: byId('stat-carry-left'),
+    statCarryRight: byId('stat-carry-right'),
     toastEl: byId('toast'),
-    useItemBtn: byId('use-item-btn'),
+    useItemLeftBtn: byId('use-item-left-btn'),
+    useItemRightBtn: byId('use-item-right-btn'),
 
     worldMapOverlay: byId('world-map-overlay'),
     worldMapCloseBtn: byId('world-map-close'),
@@ -29,15 +31,26 @@ export function createHudRefs(): HudRefs {
   };
 }
 
-export function updateHud(state: GameState, hud: HudRefs): void {
-  hud.statHp.textContent = state.player.hp + '/' + state.player.maxHp;
-  hud.statCarry.textContent = state.player.held ?? 'nothing';
-  if (state.player.held) {
-    hud.useItemBtn.textContent = 'Use item: ' + state.player.held;
-    hud.useItemBtn.style.display = 'flex';
+// shows the "use item" button only for a hand holding something usable
+// (i.e. has a FOOD_HEAL_AMOUNTS entry) — holding e.g. a sword now hides the
+// button outright rather than showing one that just toasts an error
+function updateUseButton(btn: HTMLElement, held: CarryType | null): void {
+  const usable = held != null && FOOD_HEAL_AMOUNTS[held as ItemType] != null;
+  if (usable) {
+    btn.textContent = 'Use item: ' + held;
+    btn.style.display = 'flex';
   } else {
-    hud.useItemBtn.style.display = 'none';
+    btn.style.display = 'none';
   }
+}
+
+export function updateHud(state: GameState, hud: HudRefs): void {
+  const { player } = state;
+  hud.statHp.textContent = player.hp + '/' + player.maxHp;
+  hud.statCarryLeft.textContent = player.heldLeft ?? 'nothing';
+  hud.statCarryRight.textContent = player.heldRight ?? 'nothing';
+  updateUseButton(hud.useItemLeftBtn, player.heldLeft);
+  updateUseButton(hud.useItemRightBtn, player.heldRight);
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;

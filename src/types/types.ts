@@ -7,6 +7,11 @@ import type { Rng } from '../worldgen/worldgen';
 
 export type Dir = 'up' | 'down' | 'left' | 'right';
 
+// which mouse button a click-driven action came from — left-click and
+// right-click each operate their own independent held-item slot (see
+// Player.heldLeft/heldRight below)
+export type Hand = 'left' | 'right';
+
 // three occupancy layers, bottom to top: floor (walkable ground material,
 // see FLOOR_DEFS in constants.ts), obstacles (solid, atlas-baked, see
 // OBSTACLE_DEFS), and items (loose, drawn per-frame, sit on top of an
@@ -109,21 +114,35 @@ export interface Actor {
 }
 
 export type PendingAction =
-  | { type: 'pickup'; x: number; y: number }
-  | { type: 'place'; x: number; y: number };
+  | { type: 'pickup'; x: number; y: number; hand: Hand }
+  | { type: 'place'; x: number; y: number; hand: Hand };
 
 export interface Player extends Actor {
-  held: CarryType | null;
+  heldLeft: CarryType | null;
+  heldRight: CarryType | null;
   pendingAction: PendingAction | null;
-  // set by the "Use item" button; resolved on the next simulation tick
+  // set by the "Use item" buttons; resolved on the next simulation tick
   // (see game.ts's simulateTick) rather than instantly on click, same
   // deferred-resolution convention as pendingAction above. Kept separate
   // from pendingAction/attackTarget rather than folded into the same
   // movement/attack priority chain, since using an item (e.g. healing)
-  // needs to work even while chasing or mid-attack, not get starved by them.
-  pendingUse: boolean;
+  // needs to work even while chasing or mid-attack, not get starved by
+  // them. Two independent flags (rather than one nullable Hand) so a
+  // same-tick left-then-right use doesn't clobber itself.
+  pendingUseLeft: boolean;
+  pendingUseRight: boolean;
   attacked: boolean;
   attackTarget: Enemy | Tree | Cactus | null;
+  // which hand initiated the current attackTarget — read by
+  // attemptPlayerAttack (systems/player-actions.ts) to pick that hand's
+  // weapon stats. Kept on Player rather than passed as a call argument
+  // because attackTarget persists across many ticks while the player
+  // walks into range, long after the click that set it. Always set/cleared
+  // together with attackTarget via setAttackTarget/clearAttackTarget
+  // (state/state.ts) — the one exception is damagePlayer's retaliation in
+  // combat.ts, which isn't click-initiated and deliberately leaves this
+  // field alone.
+  attackHand: Hand | null;
   // tick count (state.tick) at which the next attack becomes allowed, same
   // readyAt-style pattern as Seed/SmeltJob above — gated against state.tick
   // rather than a ms timestamp so attack cadence stays exact regardless of
@@ -262,9 +281,11 @@ export interface GameRefs {
 // DOM element refs for the HUD stat bar and the world-map overlay
 export interface HudRefs {
   statHp: HTMLElement;
-  statCarry: HTMLElement;
+  statCarryLeft: HTMLElement;
+  statCarryRight: HTMLElement;
   toastEl: HTMLElement;
-  useItemBtn: HTMLElement;
+  useItemLeftBtn: HTMLElement;
+  useItemRightBtn: HTMLElement;
 
   worldMapOverlay: HTMLElement;
   worldMapCloseBtn: HTMLElement;

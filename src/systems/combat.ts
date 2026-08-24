@@ -21,6 +21,7 @@ import {
   TILE,
 } from '../constants';
 import {
+  clearAttackTarget,
   placeItemNear,
   regenerateWorld,
   setObstacle,
@@ -109,7 +110,7 @@ export function damageEnemy(
   }
   if (enemy.hp <= 0) {
     enemy.hp = 0;
-    if (state.player.attackTarget === enemy) state.player.attackTarget = null;
+    if (state.player.attackTarget === enemy) clearAttackTarget(state.player);
     killEnemy(state, hud, enemy);
   }
 }
@@ -120,7 +121,7 @@ export function damageEnemy(
 // state/state.ts) already removes the entry from state.trees for free,
 // since the new type is 'wood' not 'tree'.
 export function fellTree(state: GameState, hud: HudRefs, tree: Tree): void {
-  if (state.player.attackTarget === tree) state.player.attackTarget = null;
+  if (state.player.attackTarget === tree) clearAttackTarget(state.player);
   spawnFloatingText(state, tree, 'felled!', '#c1633c');
   setObstacle(state, tree.tileX, tree.tileY, 'wood');
   updateHud(state, hud);
@@ -153,7 +154,7 @@ export function destroyCactus(
   hud: HudRefs,
   cactus: Cactus,
 ): void {
-  if (state.player.attackTarget === cactus) state.player.attackTarget = null;
+  if (state.player.attackTarget === cactus) clearAttackTarget(state.player);
   spawnFloatingText(state, cactus, 'destroyed!', '#c1633c');
   setObstacle(state, cactus.tileX, cactus.tileY, null);
   placeItemNear(state, cactus.tileX, cactus.tileY, 'cactusFruit');
@@ -254,7 +255,12 @@ export function damagePlayer(
   }
   player.attacked = true;
   // retaliate against whoever just hit us, interrupting whatever the
-  // player was doing (walking, hauling toward a pending pickup/place)
+  // player was doing (walking, hauling toward a pending pickup/place).
+  // Deliberately doesn't go through setAttackTarget: this isn't
+  // click-initiated, so there's no hand to attribute it to — attackHand is
+  // left as whatever it already was (the hand already in use, if the
+  // player was mid-fight; attemptPlayerAttack's `?? 'left'` fallback covers
+  // the case where it was never set).
   if (attacker) {
     player.attackTarget = attacker;
     player.pendingAction = null;

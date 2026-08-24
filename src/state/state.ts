@@ -8,12 +8,15 @@ import type {
   BerryBush,
   Cactus,
   CarryType,
+  Enemy,
   FloorType,
   GameRefs,
   GameState,
+  Hand,
   Item,
   ItemType,
   ObstacleType,
+  Player,
   Point,
   Tree,
 } from '../types/types';
@@ -304,6 +307,42 @@ export function isPlayerAt(state: GameState, x: number, y: number): boolean {
   return state.player.tileX === x && state.player.tileY === y;
 }
 
+// left/right hand accessors — every read/write of a player's held item goes
+// through these instead of branching on `hand` inline, so the two hands stay
+// symmetric across player-actions.ts/render.ts/hud.ts/game.ts
+export function getHeld(player: Player, hand: Hand): CarryType | null {
+  return hand === 'left' ? player.heldLeft : player.heldRight;
+}
+
+export function setHeld(
+  player: Player,
+  hand: Hand,
+  value: CarryType | null,
+): void {
+  if (hand === 'left') player.heldLeft = value;
+  else player.heldRight = value;
+}
+
+// sets attackTarget and attackHand together — every attackTarget assignment
+// should go through this (or clearAttackTarget below) rather than touching
+// attackTarget directly, so attackHand can't drift out of sync with it. The
+// one deliberate exception is damagePlayer's retaliation in combat.ts,
+// which isn't click-initiated and leaves attackHand as whatever it already
+// was (see that call site's comment).
+export function setAttackTarget(
+  player: Player,
+  target: Enemy | Tree | Cactus,
+  hand: Hand,
+): void {
+  player.attackTarget = target;
+  player.attackHand = hand;
+}
+
+export function clearAttackTarget(player: Player): void {
+  player.attackTarget = null;
+  player.attackHand = null;
+}
+
 export function walkable(state: GameState, x: number, y: number): boolean {
   return (
     terrainWalkable(state, x, y) &&
@@ -590,9 +629,10 @@ export function regenerateWorld(
   spawnEnemies(state, structures);
 
   const { player } = state;
-  player.held = null;
+  player.heldLeft = null;
+  player.heldRight = null;
   player.pendingAction = null;
-  player.attackTarget = null;
+  clearAttackTarget(player);
   player.path = [];
   player.attacked = false;
   player.moving = false;
@@ -652,11 +692,14 @@ export function createGameState(
       toX: 0,
       toY: 0,
       path: [],
-      held: null,
+      heldLeft: null,
+      heldRight: null,
       pendingAction: null,
-      pendingUse: false,
+      pendingUseLeft: false,
+      pendingUseRight: false,
       attacked: false,
       attackTarget: null,
+      attackHand: null,
       nextAttackAt: 0,
       nextMoveAt: 0,
       hp: PLAYER_MAX_HP,

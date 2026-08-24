@@ -1,7 +1,7 @@
 // The main canvas draw loop plus the world-map overview panel. Reads
 // GameState and draws it using the low-level primitives in rendering.ts —
 // no game logic lives here, only presentation.
-import type { GameState, Point } from '../types/types';
+import type { CarryType, GameState, Point } from '../types/types';
 import {
   carryColor,
   carryColors,
@@ -22,7 +22,7 @@ import {
   WORLD_TILE,
 } from '../constants';
 import { getClampedCamX, getClampedCamY } from './camera';
-import { obstacleAt } from '../state/state';
+import { getHeld, obstacleAt } from '../state/state';
 import {
   COLORS,
   drawBowIcon,
@@ -299,21 +299,30 @@ export function render(state: GameState, now: number): void {
           ctx.fillStyle = 'rgba(255,255,255,0.5)';
           ctx.fillRect(sx + 2, sy + 2, TILE - 4, TILE - 4);
         }
-        if (player.held === 'sword' || player.held === 'bow') {
-          const box = Math.round(TILE * 0.6);
-          const drawIcon =
-            player.held === 'sword' ? drawSwordIcon : drawBowIcon;
-          drawIcon(
-            ctx,
-            box,
-            sx + TILE / 2 - box / 2,
-            sy - box,
-            ITEM_DEFS[player.held].colors,
-          );
-        } else if (player.held) {
-          ctx.fillStyle = carryColor(player.held);
-          ctx.fillRect(sx + TILE / 2 - 2, sy - 5, 4, 4);
-        }
+        // each hand's icon is centered on the player square's own edge —
+        // left hand on the left edge, right hand on the right edge — so
+        // they read as held to the character's sides rather than floating
+        // above the head
+        const drawHandIcon = (held: CarryType | null, edgeX: number) => {
+          if (!held) return;
+          const midY = sy + TILE / 2;
+          if (held === 'sword' || held === 'bow') {
+            const box = Math.round(TILE * 0.5);
+            const drawIcon = held === 'sword' ? drawSwordIcon : drawBowIcon;
+            drawIcon(
+              ctx,
+              box,
+              edgeX - box / 2,
+              midY - box / 2,
+              ITEM_DEFS[held].colors,
+            );
+          } else {
+            ctx.fillStyle = carryColor(held);
+            ctx.fillRect(edgeX - 2, midY - 2, 4, 4);
+          }
+        };
+        drawHandIcon(getHeld(player, 'left'), sx);
+        drawHandIcon(getHeld(player, 'right'), sx + TILE);
         if (player.hp < player.maxHp)
           drawHpBar(ctx, TILE, sx, sy, player.hp / player.maxHp);
       },
