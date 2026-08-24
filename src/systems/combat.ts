@@ -12,6 +12,7 @@ import type {
   Tree,
 } from '../types/types';
 import {
+  ENEMY_DEFS,
   HIT_FLASH_MS,
   PLAYER_ATK_HP_COST,
   PLAYER_MOVE_HP_COST,
@@ -38,7 +39,12 @@ export function killEnemy(state: GameState, hud: HudRefs, enemy: Enemy): void {
     'defeated!',
     '#c1633c',
   );
-  placeItemNear(state, enemy.tileX, enemy.tileY, 'energy');
+  placeItemNear(
+    state,
+    enemy.tileX,
+    enemy.tileY,
+    ENEMY_DEFS[enemy.type].dropItem,
+  );
   updateHud(state, hud);
 }
 
@@ -94,6 +100,13 @@ export function damageEnemy(
     '-' + amount,
     '#e8a838',
   );
+  // any hit (not just a lethal one) knocks loose whatever food a jerboa has
+  // stolen — additive to the unconditional dropItem drop below on death, so
+  // a killed food-carrying jerboa drops both
+  if (enemy.carrying) {
+    placeItemNear(state, enemy.tileX, enemy.tileY, enemy.carrying);
+    enemy.carrying = null;
+  }
   if (enemy.hp <= 0) {
     enemy.hp = 0;
     if (state.player.attackTarget === enemy) state.player.attackTarget = null;

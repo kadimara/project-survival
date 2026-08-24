@@ -21,6 +21,7 @@ import type {
   BerryBush,
   Cactus,
   Dir,
+  EnemyType,
   FloorType,
   GameRefs,
   GameState,
@@ -29,6 +30,7 @@ import type {
   ObstacleType,
   PlantedSeed,
   Player,
+  Point,
   Smelter,
   Tree,
 } from '../types/types';
@@ -227,6 +229,13 @@ interface SavedEnemy {
   dir: Dir;
   hp: number;
   maxHp: number;
+  // absent on saves from before enemy types existed — loadGame defaults
+  // both to a jerboa with no home, same as a pre-existing enemy always was
+  type?: EnemyType;
+  home?: Point | null;
+  // absent on saves from before jerboa food-stealing existed — defaults to
+  // not carrying anything
+  carrying?: ItemType | null;
 }
 
 interface SavedPlayer {
@@ -280,6 +289,9 @@ export function saveGame(state: GameState): void {
         dir: e.dir,
         hp: e.hp,
         maxHp: e.maxHp,
+        type: e.type,
+        home: e.home,
+        carrying: e.carrying,
       })),
     player: {
       tileX: state.player.tileX,
@@ -357,12 +369,18 @@ export function loadGame(refs: GameRefs): GameState | null {
   };
 
   const enemies = data.enemies.map((se) => {
-    const e = makeEnemy(se.tileX, se.tileY);
+    const e = makeEnemy(
+      se.type ?? 'jerboa',
+      se.tileX,
+      se.tileY,
+      se.home ?? null,
+    );
     e.px = se.px;
     e.py = se.py;
     e.dir = se.dir;
     e.hp = se.hp;
     e.maxHp = se.maxHp;
+    e.carrying = se.carrying ?? null;
     return e;
   });
   // the training dummy is disabled for now — see spawnEnemies in

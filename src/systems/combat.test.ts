@@ -7,8 +7,9 @@ import {
   createTestTree,
 } from '../test/fixtures';
 import {
-  ENEMY_COUNT,
+  ENEMY_DEFS,
   HIT_FLASH_MS,
+  JERBOA_COUNT,
   PLAYER_ATK_HP_COST,
   PLAYER_MOVE_HP_COST,
   PROJECTILE_TILES_PER_TICK,
@@ -57,12 +58,16 @@ function assertWorldWasReset(state: ReturnType<typeof createTestGameState>) {
   expect(state.seeds.size).toBe(0);
   expect(state.smelters.size).toBe(0);
   expect(state.furnaces.size).toBe(0);
-  // spawnEnemies places up to ENEMY_COUNT wandering enemies using the seeded
-  // rng (the training dummy is disabled for now — see spawnEnemies in
-  // entities/entities.ts), so the exact count is deterministic but not
-  // asserted here to avoid coupling this test to worldgen/spawn-placement
-  // internals
-  expect(state.enemies.length).toBeLessThanOrEqual(ENEMY_COUNT);
+  // spawnEnemies places up to JERBOA_COUNT wandering 'jerboa' enemies using
+  // the seeded rng, so the exact count is deterministic but not asserted
+  // here to avoid coupling this test to worldgen/spawn-placement internals.
+  // Separately, it also seeds 'boulderGuardian' enemies tied to whichever
+  // boulder-cluster structures the regenerated world happens to contain —
+  // real, seed-dependent, and deliberately not asserted here either, for
+  // the same reason.
+  expect(
+    state.enemies.filter((e) => e.type === 'jerboa').length,
+  ).toBeLessThanOrEqual(JERBOA_COUNT);
   expect(state.items.size).toBeGreaterThan(0);
   expect(state.projectiles).toEqual([]);
 }
@@ -266,6 +271,53 @@ describe('damageEnemy', () => {
     damageEnemy(state, hud, enemy, enemy.hp, 1000);
 
     expect(state.player.attackTarget).toBe(otherTarget);
+  });
+
+  it('drops carried food on a non-lethal hit and clears carrying', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10, { carrying: 'berry' });
+    state.enemies.push(enemy);
+
+    damageEnemy(state, hud, enemy, 1, 1000);
+
+    expect(enemy.carrying).toBeNull();
+    // lands on the +1,0 ring tile, not the enemy's own (10,10): the enemy
+    // is still alive and standing there, so placeItemNear's isEnemyAt check
+    // blocks the origin, same as it would for any other occupied tile
+    expect(state.items.get('11,10')).toEqual({ x: 11, y: 10, type: 'berry' });
+    expect(state.enemies).toContain(enemy); // non-lethal — still alive
+  });
+
+  it('drops both the carried food and the normal death-drop item on a lethal hit', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10, { carrying: 'berry' });
+    state.enemies.push(enemy);
+
+    damageEnemy(state, hud, enemy, enemy.hp + 999, 1000);
+
+    expect(enemy.carrying).toBeNull();
+    // the carried food lands on the enemy's own tile (dropped first, while
+    // it's still "there"); the unconditional death-drop (killEnemy) finds
+    // that tile taken and falls back to a ring tile
+    expect(state.items.get('10,10')).toEqual({ x: 10, y: 10, type: 'berry' });
+    expect(state.items.get('11,10')).toEqual({
+      x: 11,
+      y: 10,
+      type: ENEMY_DEFS[enemy.type].dropItem,
+    });
+  });
+
+  it('drops nothing extra on a hit when not carrying anything', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10); // carrying: null (makeEnemy's default)
+    state.enemies.push(enemy);
+
+    damageEnemy(state, hud, enemy, 1, 1000);
+
+    expect(state.items.size).toBe(0);
   });
 });
 
