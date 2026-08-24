@@ -472,7 +472,7 @@ export const ENEMY_DEFS: Record<
     maxHp: 4,
     atkDamage: 0,
     atkCooldownTicks: 2,
-    aggroRadius: 5,
+    aggroRadius: 3,
     wanderRadius: 3,
     // snappier cadence than the guardian's — reads as more energetic, and
     // re-evaluates its wander target more often, which helps it actually
