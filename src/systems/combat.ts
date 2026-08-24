@@ -49,8 +49,8 @@ export function killEnemy(state: GameState, hud: HudRefs, enemy: Enemy): void {
 }
 
 // player death is a full retry, not a localized respawn: the whole world
-// (floor, obstacles, items, seeds, smelters, enemies) rebuilds from the
-// current seed, same as the seed-load/random controls. Anything just dropped by
+// (floor, obstacles, items, smelters, campfireJobs, enemies) rebuilds from
+// the current seed, same as the seed-load/random controls. Anything just dropped by
 // damagePlayer/spendMoveHp gets wiped by this along with everything else,
 // so neither of them bothers placing a death-drop first.
 function resetGame(state: GameState, hud: HudRefs): void {
@@ -212,8 +212,8 @@ export function fireProjectile(
 }
 
 // resolves any in-flight projectile whose travel time has elapsed — called
-// once per tick from game.ts's simulateTick, alongside updateSeeds/
-// updateSmelters. A target that already died from something else before the
+// once per tick from game.ts's simulateTick, alongside updateSmelters/
+// updateCampfireJobs. A target that already died from something else before the
 // shot lands just fizzles quietly (no double-kill, no floating text)
 // instead of erroring.
 export function updateProjectiles(

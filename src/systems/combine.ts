@@ -11,7 +11,14 @@ export interface CombineRecipe {
 
 // filled in as recipes are defined — empty is a valid, fully working state
 export const RECIPES: CombineRecipe[] = [
-  { held: 'stone', target: 'stone', result: 'furnace' },
+  // place a stone obstacle, then carry the second ingredient onto it — the
+  // furnace's cooler sibling (see OBSTACLE_DEFS.campfire in constants.ts
+  // and systems/cooking.ts)
+  { held: 'wood', target: 'stone', result: 'campfire' },
+  // coal (a campfire byproduct — see systems/cooking.ts) is the furnace's
+  // fuel, same "place stone, carry the second ingredient onto it" flow as
+  // campfire above
+  { held: 'coal', target: 'stone', result: 'furnace' },
   { held: 'ingot', target: 'ingot', result: 'sword' },
   // shaft + arrowhead => bow (see WEAPON_DEFS in constants.ts for its
   // ranged attack stats)

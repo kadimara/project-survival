@@ -4,7 +4,7 @@
 // entity/state model.
 import { DIRT, OASIS } from '../worldgen/worldgen';
 import { OBSTACLE_DEFS } from '../constants';
-import type { ItemType, ObstacleType } from '../types/types';
+import type { CarryType, ObstacleType } from '../types/types';
 
 // desert sand checkerboard — subtle warm-tone banding rather than a flat
 // fill, same "two-tone alternating tile" convention drawTile already used
@@ -190,16 +190,6 @@ export function drawFloorOverlay(
   ctx.fillRect(sx, sy, TILE, TILE);
 }
 
-// three fixed dots scattered around a tile, avoiding the dead center where
-// a regular item's centered square would render — used for a planted
-// energySeed (see farming.ts) so it stays visually distinct even when the
-// energy item it produced sits on the same cell
-const SCATTERED_DOT_OFFSETS: [number, number][] = [
-  [5, 5],
-  [10, 5],
-  [7, 10],
-];
-
 // four irregularly-scattered spots within a tile a berryBush's berries grow
 // at — same "fixed, non-uniform offsets" idea as SCATTERED_DOT_OFFSETS/
 // ORE_DOT_OFFSETS above rather than a neat symmetric grid, so it reads as
@@ -233,8 +223,14 @@ function lerpColor(
   return `rgb(${r},${g},${b})`;
 }
 
+// campfire counterpart of FURNACE_GLOW_DIM/BRIGHT above — a duller, cooler
+// ember range, since the campfire is "not as hot" as the furnace
+const CAMPFIRE_GLOW_DIM: [number, number, number] = [120, 55, 30];
+const CAMPFIRE_GLOW_BRIGHT: [number, number, number] = [220, 140, 70];
+
 // two out-of-phase sine waves so the flicker doesn't read as a metronome;
-// `seed` offsets the phase per-furnace so several don't pulse in lockstep
+// `seed` offsets the phase per-furnace/campfire so several don't pulse in
+// lockstep
 function flickerT(now: number, seed: number): number {
   const a = Math.sin(now / 140 + seed) * 0.5 + 0.5;
   const b = Math.sin(now / 55 + seed * 1.7) * 0.5 + 0.5;
@@ -271,10 +267,38 @@ export function drawFurnaceGlow(
   ctx.fillRect(ox + inset, oy + inset, core, core);
 }
 
+// campfire counterpart of drawFurnaceGlow above — same square-mouth-in-a-
+// lit-hearth shape, but smaller and dimmer (CAMPFIRE_GLOW_DIM/BRIGHT), since
+// the campfire isn't as hot as the furnace
+export function drawCampfireGlow(
+  ctx: CanvasRenderingContext2D,
+  TILE: number,
+  sx: number,
+  sy: number,
+  now: number,
+  seed: number,
+): void {
+  const { primary } = OBSTACLE_DEFS.campfire.colors;
+  const outerRaw = Math.max(4, Math.round(TILE * 0.55));
+  const outer = outerRaw - (outerRaw % 2);
+  const ox = sx + (TILE - outer) / 2;
+  const oy = sy + (TILE - outer) / 2;
+  ctx.fillStyle = primary;
+  ctx.fillRect(ox, oy, outer, outer);
+  ctx.fillStyle = lerpColor(
+    CAMPFIRE_GLOW_DIM,
+    CAMPFIRE_GLOW_BRIGHT,
+    flickerT(now, seed),
+  );
+  const core = Math.max(2, outer - 4);
+  const inset = (outer - core) / 2;
+  ctx.fillRect(ox + inset, oy + inset, core, core);
+}
+
 // ore ground item: a handful of bigger flecks scattered across the cell —
-// the same "loose dots" idea as a planted seed (drawScatteredDots below)
-// but chunkier, since ore sits on top of whatever stone tile it was mined
-// from rather than drawing its own tile background
+// the same "loose dots" idea as a berry (drawBerryDots below) but chunkier,
+// since ore sits on top of whatever stone tile it was mined from rather
+// than drawing its own tile background
 const ORE_DOT_OFFSETS: [number, number, number][] = [
   [2, 2, 5],
   [10, 2, 3],
@@ -291,18 +315,6 @@ export function drawOreDots(
   ctx.fillStyle = color;
   for (const [ox, oy, size] of ORE_DOT_OFFSETS) {
     ctx.fillRect(sx + ox, sy + oy, size, size);
-  }
-}
-
-export function drawScatteredDots(
-  ctx: CanvasRenderingContext2D,
-  sx: number,
-  sy: number,
-  color: string,
-): void {
-  ctx.fillStyle = color;
-  for (const [ox, oy] of SCATTERED_DOT_OFFSETS) {
-    ctx.fillRect(sx + ox, sy + oy, 2, 2);
   }
 }
 
@@ -385,20 +397,18 @@ export function drawBowIcon(
 }
 
 // draws whichever visual `type` uses as a loose item — shared by
-// state.items and an in-progress furnace job (state.smelters) so a job
-// renders exactly like the item it started from, see render.ts
+// state.items and an in-progress furnace/campfire job (state.smelters/
+// state.campfireJobs) so a job renders exactly like the item (or, for a
+// campfire, possibly an obstacle like wood — hence the CarryType param
+// rather than ItemType) it started from, see render.ts
 export function drawItemIcon(
   ctx: CanvasRenderingContext2D,
   TILE: number,
   sx: number,
   sy: number,
-  type: ItemType,
+  type: CarryType,
   colors: { primary: string; secondary: string },
 ): void {
-  if (type === 'energySeed') {
-    drawScatteredDots(ctx, sx, sy, colors.primary);
-    return;
-  }
   if (type === 'ore') {
     drawOreDots(ctx, sx, sy, colors.primary);
     return;

@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Palette Showcase</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #1a1410;
+        color: #e8ddc8;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      p.hint {
+        font-size: 12px;
+        color: #a89a80;
+        margin: 0 0 24px;
+        max-width: 760px;
+        line-height: 1.4;
+      }
+      h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #cbbfa5;
+        border-bottom: 1px solid #3a2f22;
+        padding-bottom: 6px;
+        margin: 28px 0 14px;
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+      }
+      .subgroup-label {
+        font-size: 11px;
+        color: #a89a80;
+        margin: 16px 0 10px;
+      }
+      .swatch {
+        background: #b9ac87;
+        border: 1px solid #3a2f22;
+        border-radius: 6px;
+        padding: 10px;
+        width: 128px;
+        box-sizing: border-box;
+        text-align: center;
+      }
+      .swatch canvas {
+        image-rendering: pixelated;
+        background: #000;
+        border-radius: 3px;
+        display: block;
+        margin: 0 auto 8px;
+      }
+      .swatch .name {
+        font-size: 12px;
+        font-weight: 600;
+        color: #2b1d13;
+      }
+      .swatch .hex {
+        font-size: 10px;
+        color: #5e4b34;
+        margin-top: 2px;
+      }
+      .swatch .hex span {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        margin-right: 3px;
+        vertical-align: middle;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Palette Showcase</h1>
+    <p class="hint">
+      Every floor, obstacle, and item in project-survival, drawn with the
+      same pixel-math as <code>src/render/rendering.ts</code> — colors
+      mirrored from <code>src/constants.ts</code>. Copied by hand rather than
+      imported (same "no build step / imports on purpose" convention as
+      <code>tools/noise-lab.html</code>), so this needs updating by hand
+      whenever a def/drawing function changes. The furnace and campfire
+      firebox glows are live-animated, matching the real per-frame flicker.
+    </p>
+
+    <h2>Floors</h2>
+    <div class="grid" id="floors"></div>
+
+    <h2>Obstacles</h2>
+    <div class="grid" id="obstacles"></div>
+    <div class="subgroup-label">2 tiles tall (canopy renders above the cell)</div>
+    <div class="grid" id="obstacles-tall"></div>
+
+    <h2>Items</h2>
+    <div class="grid" id="items"></div>
+
+    <script>
+      // ---- copied by hand from src/constants.ts (kept in sync manually —
+      // see tools/noise-lab.html's own copied-verbatim section for why this
+      // file has no imports) ----
+      const TILE = 16;
+
+      const FLOOR_DEFS = {
+        dirt: { primary: '#6b4a30', secondary: '#43301f' },
+        soil: { primary: '#4a3323', secondary: '#2b1d13' },
+      };
+
+      const OBSTACLE_DEFS = {
+        stone: { primary: '#8a8478', secondary: '#5e594e' },
+        furnace: { primary: '#c65a2e', secondary: '#5a2c17' },
+        campfire: { primary: '#8a3a22', secondary: '#4a1f12' },
+        wood: { primary: '#a9773f', secondary: '#6b4c22' },
+        berryBush: { primary: '#5a7a3a', secondary: '#33471f' },
+        cactus: { primary: '#5a7a3a', secondary: '#33471f' },
+        tree: { primary: '#a9773f', secondary: '#6b4c22' },
+      };
+      const TREE_CANOPY_COLORS = { primary: '#3f7a3a', secondary: '#234d20' };
+
+      const ITEM_DEFS = {
+        rawMeat: { primary: '#c96a6a', secondary: '#7a3535' },
+        meat: { primary: '#8a5a3a', secondary: '#4f3120' },
+        coal: { primary: '#3a3a3a', secondary: '#1a1a1a' },
+        ore: { primary: '#57c2c9', secondary: '#2f6a6e' },
+        ingot: { primary: '#57c2c9', secondary: '#2f6a6e' },
+        sword: { primary: '#57c2c9', secondary: '#2f6a6e' },
+        bow: { primary: '#a9773f', secondary: '#6b4c22' },
+        cactusFruit: { primary: '#c1392b', secondary: '#7a2318' },
+        berry: { primary: '#e0333f', secondary: '#8a1620' },
+        poop: { primary: '#4a3323', secondary: '#2b1d13' },
+      };
+
+      const DIRT_SAND = ['#b9ac87', '#b2a47c'];
+      const BERRY_DOT_OFFSETS = [
+        [5, 5],
+        [10, 6],
+        [6, 10],
+        [10, 10],
+      ];
+      const BERRY_SPOT_PREVIEW_COLOR = '#3a4a24';
+      const ORE_DOT_OFFSETS = [
+        [2, 2, 5],
+        [10, 2, 3],
+        [3, 10, 3],
+        [10, 9, 5],
+      ];
+      const FURNACE_GLOW_DIM = [196, 90, 48];
+      const FURNACE_GLOW_BRIGHT = [255, 210, 130];
+      const CAMPFIRE_GLOW_DIM = [120, 55, 30];
+      const CAMPFIRE_GLOW_BRIGHT = [220, 140, 70];
+
+      // ---- copied by hand from src/render/rendering.ts ----
+      function drawTile(ctx, sx, sy) {
+        const tx = sx / TILE,
+          ty = sy / TILE;
+        const parity = (tx + ty) % 2 === 0 ? 0 : 1;
+        ctx.fillStyle = DIRT_SAND[parity];
+        ctx.fillRect(sx, sy, TILE, TILE);
+      }
+
+      function drawObstacleOverlay(ctx, sx, sy, colors) {
+        const { primary, secondary } = colors;
+        const m1 = Math.max(1, Math.round(TILE * 0.09));
+        const m2 = Math.max(1, Math.round(TILE * 0.16));
+        ctx.fillStyle = secondary;
+        ctx.fillRect(sx + m1, sy + m1, TILE - m1 * 2, TILE - m1 * 2);
+        ctx.fillStyle = primary;
+        ctx.fillRect(sx + m2, sy + m2, TILE - m2 * 2, TILE - m2 * 2);
+      }
+
+      function drawObstacle(ctx, sx, sy, colors) {
+        drawTile(ctx, sx, sy);
+        drawObstacleOverlay(ctx, sx, sy, colors);
+      }
+
+      function drawFloorOverlay(ctx, sx, sy, colors) {
+        ctx.fillStyle = colors.primary;
+        ctx.fillRect(sx, sy, TILE, TILE);
+      }
+
+      function drawTreeTrunk(ctx, sx, sy, colors) {
+        const { primary, secondary } = colors;
+        const outerW = 12,
+          outerH = 12;
+        const innerW = 8,
+          innerH = 8;
+        const oxm = (TILE - outerW) / 2,
+          oym = (TILE - outerH) / 2;
+        const ixm = (TILE - innerW) / 2,
+          iym = (TILE - innerH) / 2;
+        ctx.fillStyle = secondary;
+        ctx.fillRect(sx + oxm, sy + oym, outerW, outerH);
+        ctx.fillStyle = primary;
+        ctx.fillRect(sx + ixm, sy + iym, innerW, innerH);
+      }
+
+      function drawTreeCanopy(ctx, sx, sy, colors) {
+        const { primary, secondary } = colors;
+        const outerW = 20,
+          outerH = 24;
+        const innerW = 16,
+          innerH = 20;
+        const oxm = (TILE - outerW) / 2,
+          oym = (TILE - outerH) / 2;
+        const ixm = (TILE - innerW) / 2,
+          iym = (TILE - innerH) / 2;
+        ctx.fillStyle = secondary;
+        ctx.fillRect(sx + oxm, sy + oym, outerW, outerH);
+        ctx.fillStyle = primary;
+        ctx.fillRect(sx + ixm, sy + iym, innerW, innerH);
+      }
+
+      function drawCactusBody(ctx, sx, sy, colors, fruitColors) {
+        drawObstacleOverlay(ctx, sx, sy, colors);
+        const fruitSize = Math.max(3, Math.round(TILE * 0.28));
+        const fx = sx + (TILE - fruitSize) / 2;
+        const fy = sy + Math.round(TILE * 0.18);
+        ctx.fillStyle = fruitColors.secondary;
+        ctx.fillRect(fx - 1, fy - 1, fruitSize + 2, fruitSize + 2);
+        ctx.fillStyle = fruitColors.primary;
+        ctx.fillRect(fx, fy, fruitSize, fruitSize);
+      }
+
+      function drawBerryBushBody(ctx, sx, sy, colors) {
+        drawObstacleOverlay(ctx, sx, sy, colors);
+        ctx.fillStyle = BERRY_SPOT_PREVIEW_COLOR;
+        for (const [ox, oy] of BERRY_DOT_OFFSETS) {
+          ctx.fillRect(sx + ox, sy + oy, 1, 1);
+        }
+      }
+
+      function lerpColor(c1, c2, t) {
+        const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+        const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+        const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+        return `rgb(${r},${g},${b})`;
+      }
+
+      function flickerT(now, seed) {
+        const a = Math.sin(now / 140 + seed) * 0.5 + 0.5;
+        const b = Math.sin(now / 55 + seed * 1.7) * 0.5 + 0.5;
+        return a * 0.65 + b * 0.35;
+      }
+
+      function drawGlow(ctx, sx, sy, now, seed, primary, sizeFrac, dim, bright) {
+        const outerRaw = Math.max(4, Math.round(TILE * sizeFrac));
+        const outer = outerRaw - (outerRaw % 2);
+        const ox = sx + (TILE - outer) / 2;
+        const oy = sy + (TILE - outer) / 2;
+        ctx.fillStyle = primary;
+        ctx.fillRect(ox, oy, outer, outer);
+        ctx.fillStyle = lerpColor(dim, bright, flickerT(now, seed));
+        const core = Math.max(2, outer - 4);
+        const inset = (outer - core) / 2;
+        ctx.fillRect(ox + inset, oy + inset, core, core);
+      }
+
+      function drawOreDots(ctx, sx, sy, color) {
+        ctx.fillStyle = color;
+        for (const [ox, oy, size] of ORE_DOT_OFFSETS) {
+          ctx.fillRect(sx + ox, sy + oy, size, size);
+        }
+      }
+
+      function drawBerryDots(ctx, sx, sy, color) {
+        ctx.fillStyle = color;
+        for (const [ox, oy] of BERRY_DOT_OFFSETS) {
+          ctx.fillRect(sx + ox, sy + oy, 2, 2);
+        }
+      }
+
+      function drawSwordIcon(ctx, box, sx, sy, colors) {
+        const cx = sx + box / 2;
+        const bladeW = Math.max(1, Math.round(box * 0.125));
+        const bladeH = Math.max(2, Math.round(box * 0.5));
+        const bladeY = sy + Math.round(box * 0.125);
+        const guardW = Math.max(bladeW + 2, Math.round(box * 0.375));
+        const guardH = Math.max(1, Math.round(box * 0.125));
+        const guardY = bladeY + bladeH - guardH;
+        const handleH = Math.max(1, Math.round(box * 0.1875));
+        ctx.fillStyle = colors.primary;
+        ctx.fillRect(cx - bladeW / 2, bladeY, bladeW, bladeH);
+        ctx.fillStyle = colors.secondary;
+        ctx.fillRect(cx - guardW / 2, guardY, guardW, guardH);
+        ctx.fillRect(cx - bladeW / 2, guardY + guardH, bladeW, handleH);
+      }
+
+      function drawBowIcon(ctx, box, sx, sy, colors) {
+        const segments = 5;
+        const segH = box / segments;
+        const limbW = Math.max(2, Math.round(box * 0.22));
+        const stringW = Math.max(1, Math.round(box * 0.1));
+        const stringX = sx + Math.round(box * 0.3);
+        const bulge = [0, 0.14, 0.24, 0.14, 0];
+        ctx.fillStyle = colors.secondary;
+        ctx.fillRect(stringX - stringW, sy, stringW, box);
+        ctx.fillStyle = colors.primary;
+        for (let i = 0; i < segments; i++) {
+          const bx = stringX + Math.round(box * bulge[i]);
+          ctx.fillRect(bx, sy + Math.round(i * segH), limbW, Math.ceil(segH) + 1);
+        }
+      }
+
+      function drawItemIcon(ctx, sx, sy, type, colors) {
+        if (type === 'ore') return drawOreDots(ctx, sx, sy, colors.primary);
+        if (type === 'sword') return drawSwordIcon(ctx, TILE, sx, sy, colors);
+        if (type === 'bow') return drawBowIcon(ctx, TILE, sx, sy, colors);
+        if (type === 'berry') return drawBerryDots(ctx, sx, sy, colors.primary);
+        const size = Math.max(4, Math.round(TILE * 0.4));
+        const ix = sx + (TILE - size) / 2,
+          iy = sy + (TILE - size) / 2;
+        ctx.fillStyle = colors.secondary;
+        ctx.fillRect(ix - 1, iy - 1, size + 2, size + 2);
+        ctx.fillStyle = colors.primary;
+        ctx.fillRect(ix, iy, size, size);
+      }
+      // ---- end copied section ----
+
+      const ZOOM = 6;
+
+      function makeSwatch(container, name, extraTilesTallAbove) {
+        const cell = document.createElement('div');
+        cell.className = 'swatch';
+        const canvas = document.createElement('canvas');
+        const tilesTall = 1 + (extraTilesTallAbove || 0);
+        canvas.width = TILE * ZOOM;
+        canvas.height = TILE * ZOOM * tilesTall;
+        canvas.style.width = TILE * ZOOM + 'px';
+        canvas.style.height = TILE * ZOOM * tilesTall + 'px';
+        const label = document.createElement('div');
+        label.className = 'name';
+        label.textContent = name;
+        cell.appendChild(canvas);
+        cell.appendChild(label);
+        container.appendChild(cell);
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.scale(ZOOM, ZOOM);
+        return ctx;
+      }
+
+      function addHex(container, colors) {
+        const hex = document.createElement('div');
+        hex.className = 'hex';
+        hex.innerHTML =
+          `<span style="background:${colors.primary}"></span>${colors.primary} ` +
+          `<span style="background:${colors.secondary}"></span>${colors.secondary}`;
+        container.lastElementChild.appendChild(hex);
+      }
+
+      // ---- floors: flat edge-to-edge fill, no checkerboard base ----
+      const floorsEl = document.getElementById('floors');
+      for (const [name, colors] of Object.entries(FLOOR_DEFS)) {
+        const ctx = makeSwatch(floorsEl, name);
+        drawFloorOverlay(ctx, 0, 0, colors);
+        addHex(floorsEl, colors);
+      }
+
+      // ---- obstacles: matches patchGroundAtlasTile's baked look exactly ----
+      const obstaclesEl = document.getElementById('obstacles');
+      // obstacles whose canopy/etc. extends a tile above the cell (currently
+      // just tree) get their own row, since their taller swatch would
+      // otherwise throw off the flex-wrap alignment of the 1-tile ones
+      const obstaclesTallEl = document.getElementById('obstacles-tall');
+      const animated = []; // { ctx, draw(now) } — redrawn every frame for the flicker
+
+      function addStaticObstacle(name, draw) {
+        const ctx = makeSwatch(obstaclesEl, name);
+        draw(ctx);
+        addHex(obstaclesEl, OBSTACLE_DEFS[name]);
+      }
+
+      addStaticObstacle('stone', (ctx) => drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone));
+      addStaticObstacle('wood', (ctx) => drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.wood));
+      addStaticObstacle('berryBush', (ctx) => {
+        drawTile(ctx, 0, 0);
+        drawBerryBushBody(ctx, 0, 0, OBSTACLE_DEFS.berryBush);
+      });
+      addStaticObstacle('cactus', (ctx) => {
+        drawTile(ctx, 0, 0);
+        drawCactusBody(ctx, 0, 0, OBSTACLE_DEFS.cactus, ITEM_DEFS.cactusFruit);
+      });
+
+      // tree: trunk cell below, canopy one tile above — same y-sorted look as
+      // the real per-frame tree pass in render.ts
+      {
+        const ctx = makeSwatch(obstaclesTallEl, 'tree', 1);
+        drawTile(ctx, 0, 0);
+        drawTile(ctx, 0, TILE);
+        drawTreeTrunk(ctx, 0, TILE, OBSTACLE_DEFS.tree);
+        drawTreeCanopy(ctx, 0, 0, TREE_CANOPY_COLORS);
+        addHex(obstaclesTallEl, OBSTACLE_DEFS.tree);
+      }
+
+      // furnace/campfire: body bakes as plain stone, only the firebox glow
+      // animates on top each frame — matches ground-atlas.ts + render.ts
+      {
+        const ctx = makeSwatch(obstaclesEl, 'furnace');
+        drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone);
+        animated.push({
+          ctx,
+          draw: (now) => {
+            drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone);
+            drawGlow(
+              ctx,
+              0,
+              0,
+              now,
+              0,
+              OBSTACLE_DEFS.furnace.primary,
+              0.7,
+              FURNACE_GLOW_DIM,
+              FURNACE_GLOW_BRIGHT,
+            );
+          },
+        });
+        addHex(obstaclesEl, OBSTACLE_DEFS.furnace);
+      }
+      {
+        const ctx = makeSwatch(obstaclesEl, 'campfire');
+        drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone);
+        animated.push({
+          ctx,
+          draw: (now) => {
+            drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone);
+            drawGlow(
+              ctx,
+              0,
+              0,
+              now,
+              0,
+              OBSTACLE_DEFS.campfire.primary,
+              0.55,
+              CAMPFIRE_GLOW_DIM,
+              CAMPFIRE_GLOW_BRIGHT,
+            );
+          },
+        });
+        addHex(obstaclesEl, OBSTACLE_DEFS.campfire);
+      }
+
+      // ---- items: drawn on plain sand, same as a loose ground item ----
+      const itemsEl = document.getElementById('items');
+      for (const [name, colors] of Object.entries(ITEM_DEFS)) {
+        const ctx = makeSwatch(itemsEl, name);
+        drawTile(ctx, 0, 0);
+        drawItemIcon(ctx, 0, 0, name, colors);
+        addHex(itemsEl, colors);
+      }
+
+      function tick(now) {
+        for (const a of animated) a.draw(now);
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    </script>
+  </body>
+</html>

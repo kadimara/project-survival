@@ -7,10 +7,12 @@ const ALL_CARRY_TYPES: CarryType[] = [
   'soil',
   'dirt',
   'furnace',
+  'campfire',
   'wood',
   'berryBush',
-  'energy',
-  'energySeed',
+  'rawMeat',
+  'meat',
+  'coal',
   'ingot',
   'ore',
   'sword',
@@ -20,8 +22,12 @@ const ALL_CARRY_TYPES: CarryType[] = [
 ];
 
 describe('tryCombine', () => {
-  it('resolves the stone + stone recipe to furnace', () => {
-    expect(tryCombine('stone', 'stone')).toBe('furnace');
+  it('resolves the wood + stone recipe to campfire', () => {
+    expect(tryCombine('wood', 'stone')).toBe('campfire');
+  });
+
+  it('resolves the coal + stone recipe to furnace', () => {
+    expect(tryCombine('coal', 'stone')).toBe('furnace');
   });
 
   it('resolves the ingot + ingot recipe to sword', () => {
@@ -37,11 +43,12 @@ describe('tryCombine', () => {
   });
 
   it('returns null for non-matching pairs', () => {
-    expect(tryCombine('energy', 'ore')).toBeNull();
+    expect(tryCombine('rawMeat', 'ore')).toBeNull();
     expect(tryCombine('furnace', 'furnace')).toBeNull();
     expect(tryCombine('soil', 'stone')).toBeNull();
     expect(tryCombine('ingot', 'wood')).toBeNull();
     expect(tryCombine('poop', 'dirt')).toBeNull();
+    expect(tryCombine('stone', 'stone')).toBeNull();
   });
 
   it('matches RECIPES for every held/target pair (future-proofs new recipes)', () => {

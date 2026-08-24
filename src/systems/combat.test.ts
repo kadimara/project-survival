@@ -55,9 +55,10 @@ function assertWorldWasReset(state: ReturnType<typeof createTestGameState>) {
   expect(player.path).toEqual([]);
   expect(player.attacked).toBe(false);
   expect(player.flashUntil).toBe(0);
-  expect(state.seeds.size).toBe(0);
   expect(state.smelters.size).toBe(0);
   expect(state.furnaces.size).toBe(0);
+  expect(state.campfireJobs.size).toBe(0);
+  expect(state.campfires.size).toBe(0);
   // spawnEnemies places up to JERBOA_COUNT wandering 'jerboa' enemies using
   // the seeded rng, so the exact count is deterministic but not asserted
   // here to avoid coupling this test to worldgen/spawn-placement internals.
@@ -344,7 +345,7 @@ describe('killEnemy', () => {
     expect(text?.color).toBe('#c1633c');
   });
 
-  it("drops an energy item at the enemy's own tile when open", () => {
+  it("drops a rawMeat item at the enemy's own tile when open", () => {
     const state = createTestGameState();
     const hud = createTestHudRefs();
     const enemy = createTestEnemy(10, 10);
@@ -353,7 +354,7 @@ describe('killEnemy', () => {
     expect(state.items.get('10,10')).toEqual({
       x: 10,
       y: 10,
-      type: 'energy',
+      type: 'rawMeat',
     });
   });
 
@@ -367,7 +368,7 @@ describe('killEnemy', () => {
     expect(state.items.get('6,5')).toEqual({
       x: 6,
       y: 5,
-      type: 'energy',
+      type: 'rawMeat',
     });
   });
 
@@ -382,7 +383,7 @@ describe('killEnemy', () => {
     expect(state.items.get('4,5')).toEqual({
       x: 4,
       y: 5,
-      type: 'energy',
+      type: 'rawMeat',
     });
   });
 
@@ -403,7 +404,7 @@ describe('killEnemy', () => {
     expect(state.items.get('10,10')).toEqual({
       x: 10,
       y: 10,
-      type: 'energy',
+      type: 'rawMeat',
     });
   });
 });
