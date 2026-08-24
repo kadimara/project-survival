@@ -43,6 +43,11 @@
         flex-wrap: wrap;
         gap: 14px;
       }
+      .subgroup-label {
+        font-size: 11px;
+        color: #a89a80;
+        margin: 16px 0 10px;
+      }
       .swatch {
         background: #b9ac87;
         border: 1px solid #3a2f22;
@@ -96,6 +101,8 @@
 
     <h2>Obstacles</h2>
     <div class="grid" id="obstacles"></div>
+    <div class="subgroup-label">2 tiles tall (canopy renders above the cell)</div>
+    <div class="grid" id="obstacles-tall"></div>
 
     <h2>Items</h2>
     <div class="grid" id="items"></div>
@@ -363,6 +370,10 @@
 
       // ---- obstacles: matches patchGroundAtlasTile's baked look exactly ----
       const obstaclesEl = document.getElementById('obstacles');
+      // obstacles whose canopy/etc. extends a tile above the cell (currently
+      // just tree) get their own row, since their taller swatch would
+      // otherwise throw off the flex-wrap alignment of the 1-tile ones
+      const obstaclesTallEl = document.getElementById('obstacles-tall');
       const animated = []; // { ctx, draw(now) } — redrawn every frame for the flicker
 
       function addStaticObstacle(name, draw) {
@@ -385,12 +396,12 @@
       // tree: trunk cell below, canopy one tile above — same y-sorted look as
       // the real per-frame tree pass in render.ts
       {
-        const ctx = makeSwatch(obstaclesEl, 'tree', 1);
+        const ctx = makeSwatch(obstaclesTallEl, 'tree', 1);
         drawTile(ctx, 0, 0);
         drawTile(ctx, 0, TILE);
         drawTreeTrunk(ctx, 0, TILE, OBSTACLE_DEFS.tree);
         drawTreeCanopy(ctx, 0, 0, TREE_CANOPY_COLORS);
-        addHex(obstaclesEl, OBSTACLE_DEFS.tree);
+        addHex(obstaclesTallEl, OBSTACLE_DEFS.tree);
       }
 
       // furnace/campfire: body bakes as plain stone, only the firebox glow
