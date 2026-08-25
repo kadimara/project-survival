@@ -396,6 +396,60 @@ export function drawBowIcon(
   }
 }
 
+// reed ground item: a small cluster of grass-like stalks rooted at the
+// tile's bottom edge, each capped with a darker seed head — reads as a cut
+// stalk rather than a chunk, unlike the scattered flecks ore/berry use
+// above. Heights/x-offsets are fixed, irregular values (not a neat grid),
+// same "organic, not uniform" idea as BERRY_DOT_OFFSETS/ORE_DOT_OFFSETS.
+const REED_STALK_OFFSETS: [number, number, number][] = [
+  // [x, stalk height, seed-head height]
+  [4, 9, 3],
+  [8, 12, 4],
+  [12, 10, 3],
+];
+const REED_STALK_W = 2;
+
+export function drawReedIcon(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  const baseY = sy + 15;
+  for (const [ox, h, headH] of REED_STALK_OFFSETS) {
+    ctx.fillStyle = colors.primary;
+    ctx.fillRect(sx + ox - 1, baseY - h, REED_STALK_W, h);
+    ctx.fillStyle = colors.secondary;
+    ctx.fillRect(sx + ox - 1, baseY - h - headH + 2, REED_STALK_W, headH);
+  }
+}
+
+// rope ground item: a diagonal cord built from closely-overlapping
+// segments (step distance smaller than the thickness, unlike drawBowIcon's
+// evenly-spaced limb segments), alternating primary/secondary every
+// segment with a small perpendicular zigzag — reads as one continuous
+// twisted/braided strand crossing the tile, like a barber pole, rather
+// than a checkerboard of separate blocks.
+const ROPE_SEGMENTS = 8;
+const ROPE_THICKNESS = 3;
+
+export function drawRopeIcon(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  const span = 16 - ROPE_THICKNESS;
+  for (let i = 0; i < ROPE_SEGMENTS; i++) {
+    const t = i / (ROPE_SEGMENTS - 1);
+    const wobble = i % 2 === 0 ? -1 : 1;
+    const x = sx + Math.round(t * span) + wobble;
+    const y = sy + Math.round(t * span) - wobble;
+    ctx.fillStyle = i % 2 === 0 ? colors.primary : colors.secondary;
+    ctx.fillRect(x, y, ROPE_THICKNESS, ROPE_THICKNESS);
+  }
+}
+
 // draws whichever visual `type` uses as a loose item — shared by
 // state.items and an in-progress furnace/campfire job (state.smelters/
 // state.campfireJobs) so a job renders exactly like the item (or, for a
@@ -423,6 +477,14 @@ export function drawItemIcon(
   }
   if (type === 'berry') {
     drawBerryDots(ctx, sx, sy, colors.primary);
+    return;
+  }
+  if (type === 'reed') {
+    drawReedIcon(ctx, sx, sy, colors);
+    return;
+  }
+  if (type === 'rope') {
+    drawRopeIcon(ctx, sx, sy, colors);
     return;
   }
   const size = Math.max(4, Math.round(TILE * 0.4));

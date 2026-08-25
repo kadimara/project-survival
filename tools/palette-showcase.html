@@ -158,6 +158,14 @@
         [3, 10, 3],
         [10, 9, 5],
       ];
+      const REED_STALK_OFFSETS = [
+        [4, 9, 3],
+        [8, 12, 4],
+        [12, 10, 3],
+      ];
+      const REED_STALK_W = 2;
+      const ROPE_SEGMENTS = 8;
+      const ROPE_THICKNESS = 3;
       const FURNACE_GLOW_DIM = [196, 90, 48];
       const FURNACE_GLOW_BRIGHT = [255, 210, 130];
       const CAMPFIRE_GLOW_DIM = [120, 55, 30];
@@ -283,6 +291,28 @@
         }
       }
 
+      function drawReedIcon(ctx, sx, sy, colors) {
+        const baseY = sy + 15;
+        for (const [ox, h, headH] of REED_STALK_OFFSETS) {
+          ctx.fillStyle = colors.primary;
+          ctx.fillRect(sx + ox - 1, baseY - h, REED_STALK_W, h);
+          ctx.fillStyle = colors.secondary;
+          ctx.fillRect(sx + ox - 1, baseY - h - headH + 2, REED_STALK_W, headH);
+        }
+      }
+
+      function drawRopeIcon(ctx, sx, sy, colors) {
+        const span = 16 - ROPE_THICKNESS;
+        for (let i = 0; i < ROPE_SEGMENTS; i++) {
+          const t = i / (ROPE_SEGMENTS - 1);
+          const wobble = i % 2 === 0 ? -1 : 1;
+          const x = sx + Math.round(t * span) + wobble;
+          const y = sy + Math.round(t * span) - wobble;
+          ctx.fillStyle = i % 2 === 0 ? colors.primary : colors.secondary;
+          ctx.fillRect(x, y, ROPE_THICKNESS, ROPE_THICKNESS);
+        }
+      }
+
       function drawSwordIcon(ctx, box, sx, sy, colors) {
         const cx = sx + box / 2;
         const bladeW = Math.max(1, Math.round(box * 0.125));
@@ -320,6 +350,8 @@
         if (type === 'sword') return drawSwordIcon(ctx, TILE, sx, sy, colors);
         if (type === 'bow') return drawBowIcon(ctx, TILE, sx, sy, colors);
         if (type === 'berry') return drawBerryDots(ctx, sx, sy, colors.primary);
+        if (type === 'reed') return drawReedIcon(ctx, sx, sy, colors);
+        if (type === 'rope') return drawRopeIcon(ctx, sx, sy, colors);
         const size = Math.max(4, Math.round(TILE * 0.4));
         const ix = sx + (TILE - size) / 2,
           iy = sy + (TILE - size) / 2;
