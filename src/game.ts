@@ -8,6 +8,8 @@ import {
   MAP_W,
   TICK_MS,
   TILE,
+  TOUCH_LONG_PRESS_MS,
+  TOUCH_MOVE_CANCEL_PX,
   weaponRange,
   WORLD_TILE,
 } from './constants';
@@ -241,6 +243,76 @@ export function initColonyGame(): void {
     e.preventDefault();
     const { x, y } = screenToTile(state, e.clientX, e.clientY);
     handleClick(state, x, y, 'right', e.ctrlKey, walkableFn);
+  });
+
+  // ---- touch: tap mirrors left-click, long-press mirrors right-click ----
+  // there's no Ctrl-equivalent modifier on touch, so the walk-bypass path
+  // (handleClick's ctrlKey param) is unreachable from touch for now
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchMoved = false;
+  let longPressFired = false;
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearLongPressTimer = () => {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
+  canvas.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      touchMoved = false;
+      longPressFired = false;
+      state.hoveredTile = screenToTile(state, touchStartX, touchStartY);
+
+      clearLongPressTimer();
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        const { x, y } = screenToTile(state, touchStartX, touchStartY);
+        handleClick(state, x, y, 'right', false, walkableFn);
+      }, TOUCH_LONG_PRESS_MS);
+    },
+    { passive: false },
+  );
+
+  canvas.addEventListener(
+    'touchmove',
+    (e) => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      if (touchMoved) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - touchStartX,
+        dy = touch.clientY - touchStartY;
+      if (Math.hypot(dx, dy) > TOUCH_MOVE_CANCEL_PX) {
+        touchMoved = true;
+        clearLongPressTimer();
+      }
+    },
+    { passive: false },
+  );
+
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    clearLongPressTimer();
+    if (!longPressFired && !touchMoved) {
+      const { x, y } = screenToTile(state, touchStartX, touchStartY);
+      handleClick(state, x, y, 'left', false, walkableFn);
+    }
+    state.hoveredTile = null;
+  });
+
+  canvas.addEventListener('touchcancel', () => {
+    clearLongPressTimer();
+    state.hoveredTile = null;
   });
 
   // ---- world map ----
