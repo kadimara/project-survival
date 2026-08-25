@@ -102,6 +102,21 @@ describe('buildVegetationRing', () => {
     }
   });
 
+  it('lets reed claim an oasis (ring-0) cell, but never bush/tree even when their band nominally covers 0', () => {
+    const { bushes, trees, reeds } = buildVegetationRing(
+      mulberry32(3),
+      oasis,
+      300,
+      300,
+      { min: 0, max: 2, chance: 1 }, // would claim ring 0 too if not guarded
+      { min: 0, max: 5, chance: 1 }, // same
+      { min: 0, max: 0, chance: 1 }, // reed's real-world band — water itself
+    );
+    expect(reeds.has('10,10')).toBe(true);
+    expect(bushes.has('10,10')).toBe(false);
+    expect(trees.has('10,10')).toBe(false);
+  });
+
   it('never lets a cell be claimed by more than one of bushes/trees/reeds', () => {
     const { bushes, trees, reeds } = buildVegetationRing(
       mulberry32(5),

@@ -103,8 +103,12 @@ export function patchGroundAtlasTile(
     drawTile(ctx, TILE, DIRT, sx, sy);
     drawBerryBushBody(ctx, TILE, sx, sy, OBSTACLE_DEFS.berryBush.colors);
   } else if (type === 'reed') {
-    // wild, standing on no floor at all — same treatment as berryBush above
-    drawTile(ctx, TILE, DIRT, sx, sy);
+    // wild, standing on no floor at all — same no-floor treatment as
+    // berryBush above, except the base tile uses the real map background
+    // (map[y][x], typically OASIS) rather than a hardcoded DIRT: reed
+    // grows right in the water (see REED_RING_MIN/MAX in constants.ts), so
+    // the tile underneath it should still read as water, not dry sand
+    drawTile(ctx, TILE, map[y][x], sx, sy);
     drawReedIcon(ctx, sx, sy, OBSTACLE_DEFS.reed.colors);
   } else if (type) drawObstacle(ctx, TILE, sx, sy, type);
   else drawTile(ctx, TILE, map[y][x], sx, sy);

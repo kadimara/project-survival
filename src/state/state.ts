@@ -523,7 +523,11 @@ function buildWorldLayers(
     trees.set(key, makeTreeAt(x, y));
   }
   // wild and pickable like berryBush above, no floor/HP of its own — see
-  // OBSTACLE_DEFS.reed in constants.ts
+  // OBSTACLE_DEFS.reed in constants.ts. Unlike bushes/trees, reed cells are
+  // typically oasis (water) cells themselves (see REED_RING_MIN/MAX), so
+  // this deliberately doesn't exclude `oasis` — patchGroundAtlasTile draws
+  // its base tile from the real map value, so the water tint still shows
+  // through underneath (see render/ground-atlas.ts)
   for (const key of reeds) {
     if (stones.has(key) || bushes.has(key) || treeCells.has(key)) continue;
     obstacles.set(key, 'reed');

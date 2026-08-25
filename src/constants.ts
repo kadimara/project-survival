@@ -75,14 +75,16 @@ export const TREE_RING_MAX = 5;
 export const TREE_SPAWN_CHANCE = 0.05;
 
 // reeds (an OBSTACLE_DEFS entry, see below — wild and pickable like
-// berryBush) hug the water tighter than either bush or tree: a one-tile-
-// wide band right at the bank (min===max===1), rolled in the same
-// buildVegetationRing BFS pass so a cell already claimed by a bush or tree
-// is never also claimed by reed. A noticeably higher chance than bush/tree
-// since a thin one-tile band needs a denser roll to still read as a patch
-// rather than a scattered rare find.
-export const REED_RING_MIN = 1;
-export const REED_RING_MAX = 1;
+// berryBush) grow right in the water itself rather than beside it: ring
+// distance 0, i.e. actual oasis cells (min===max===0) — unlike bush/tree,
+// which are never allowed onto an oasis cell at all (see the d>0 guards in
+// buildVegetationRing). Rolled in the same BFS pass so a cell already
+// claimed by a bush or tree is never also claimed by reed (moot in
+// practice since bush/tree can't land on ring 0 anyway). A noticeably
+// higher chance than bush/tree since it's now competing for space only
+// against the oasis's own (typically small) cell count.
+export const REED_RING_MIN = 0;
+export const REED_RING_MAX = 0;
 export const REED_SPAWN_CHANCE = 0.35;
 
 // ---- cactus fruit: unlike the oasis-ring bushes/trees above, cacti scatter

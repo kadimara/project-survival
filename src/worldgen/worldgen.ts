@@ -394,7 +394,11 @@ export function buildOasisPatch(
 // hugs a fixed point (see SPAWN_SAFETY_R above). Bushes are checked first
 // and claim their ring at the given chance; trees are only rolled on cells
 // bushes didn't take; reeds are only rolled on cells neither took — so a
-// cell is never claimed by more than one.
+// cell is never claimed by more than one. Ring distance 0 is an oasis cell
+// itself (actual water) — bush/tree are never allowed to land there
+// (real plants, not lily pads), but reed's own band can include it (see
+// REED_RING_MIN/MAX in constants.ts), since reed is meant to grow in the
+// water rather than beside it.
 export function buildVegetationRing(
   rng: Rng,
   oasis: Set<string>,
@@ -438,10 +442,9 @@ export function buildVegetationRing(
   const trees = new Set<string>();
   const reeds = new Set<string>();
   for (const [key, d] of dist) {
-    if (d === 0) continue; // an oasis cell itself, not a candidate
-    if (d >= bush.min && d <= bush.max && rng() < bush.chance) {
+    if (d > 0 && d >= bush.min && d <= bush.max && rng() < bush.chance) {
       bushes.add(key);
-    } else if (d >= tree.min && d <= tree.max && rng() < tree.chance) {
+    } else if (d > 0 && d >= tree.min && d <= tree.max && rng() < tree.chance) {
       trees.add(key);
     } else if (d >= reed.min && d <= reed.max && rng() < reed.chance) {
       reeds.add(key);
