@@ -27,10 +27,11 @@ import {
   drawCactusBody,
   drawFloorOverlay,
   drawObstacle,
-  drawObstacleOverlay,
   drawReedIcon,
+  drawStoneBody,
   drawTile,
   drawTreeTrunk,
+  drawWoodLogBody,
 } from './rendering';
 import { DIRT } from '../worldgen/worldgen';
 
@@ -70,14 +71,12 @@ export function patchGroundAtlasTile(
       drawBerryBushBody(ctx, TILE, sx, sy, OBSTACLE_DEFS.berryBush.colors);
     else if (obstacleType === 'reed')
       drawReedIcon(ctx, sx, sy, OBSTACLE_DEFS.reed.colors);
-    else if (obstacleType)
-      drawObstacleOverlay(
-        ctx,
-        TILE,
-        sx,
-        sy,
-        OBSTACLE_DEFS[obstacleType].colors,
-      );
+    else if (obstacleType === 'stone')
+      drawStoneBody(ctx, TILE, sx, sy, OBSTACLE_DEFS.stone.colors);
+    else if (obstacleType === 'wood')
+      drawWoodLogBody(ctx, TILE, sx, sy, OBSTACLE_DEFS.wood.colors);
+    // every ObstacleType is now covered above (furnace/campfire map to
+    // 'stone' first) — no generic fallback left to fall through to
     return;
   }
   if (type === 'furnace' || type === 'campfire')
