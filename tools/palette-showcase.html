@@ -126,6 +126,7 @@
         berryBush: { primary: '#5a7a3a', secondary: '#33471f' },
         cactus: { primary: '#5a7a3a', secondary: '#33471f' },
         tree: { primary: '#a9773f', secondary: '#6b4c22' },
+        reed: { primary: '#8fae4a', secondary: '#4f6b24' },
       };
       const TREE_CANOPY_COLORS = { primary: '#3f7a3a', secondary: '#234d20' };
 
@@ -140,6 +141,8 @@
         cactusFruit: { primary: '#c1392b', secondary: '#7a2318' },
         berry: { primary: '#e0333f', secondary: '#8a1620' },
         poop: { primary: '#4a3323', secondary: '#2b1d13' },
+        rope: { primary: '#d8c48a', secondary: '#a4854a' },
+        fishingRod: { primary: '#8fae4a', secondary: '#a4854a' },
       };
 
       const DIRT_SAND = ['#b9ac87', '#b2a47c'];
@@ -155,6 +158,29 @@
         [10, 2, 3],
         [3, 10, 3],
         [10, 9, 5],
+      ];
+      const REED_STALK_OFFSETS = [
+        [2, 8, 2],
+        [4, 12, 3],
+        [6, 9, 2],
+        [9, 13, 4],
+        [11, 10, 3],
+        [13, 8, 2],
+      ];
+      const REED_STALK_W = 2;
+      const ROPE_SEGMENTS = 8;
+      const ROPE_THICKNESS = 3;
+      const FISHING_ROD_POLE_STEPS = [
+        [2, 14],
+        [4, 11],
+        [6, 9],
+        [8, 6],
+        [11, 5],
+      ];
+      const FISHING_ROD_LINE_STEPS = [
+        [11, 5],
+        [13, 3],
+        [15, 1],
       ];
       const FURNACE_GLOW_DIM = [196, 90, 48];
       const FURNACE_GLOW_BRIGHT = [255, 210, 130];
@@ -281,6 +307,40 @@
         }
       }
 
+      function drawReedIcon(ctx, sx, sy, colors) {
+        const baseY = sy + 15;
+        for (const [ox, h, headH] of REED_STALK_OFFSETS) {
+          ctx.fillStyle = colors.primary;
+          ctx.fillRect(sx + ox - 1, baseY - h, REED_STALK_W, h);
+          ctx.fillStyle = colors.secondary;
+          ctx.fillRect(sx + ox - 1, baseY - h - headH + 2, REED_STALK_W, headH);
+        }
+      }
+
+      function drawRopeIcon(ctx, sx, sy, colors) {
+        const span = 16 - ROPE_THICKNESS;
+        for (let i = 0; i < ROPE_SEGMENTS; i++) {
+          const t = i / (ROPE_SEGMENTS - 1);
+          const wobble = i % 2 === 0 ? -1 : 1;
+          const x = sx + Math.round(t * span) + wobble;
+          const y = sy + Math.round(t * span) - wobble;
+          ctx.fillStyle = i % 2 === 0 ? colors.primary : colors.secondary;
+          ctx.fillRect(x, y, ROPE_THICKNESS, ROPE_THICKNESS);
+        }
+      }
+
+      function drawFishingRodIcon(ctx, sx, sy, colors) {
+        ctx.fillStyle = colors.primary;
+        for (const [ox, oy] of FISHING_ROD_POLE_STEPS) {
+          ctx.fillRect(sx + ox - 1, sy + oy - 1, 3, 3);
+        }
+        ctx.fillStyle = colors.secondary;
+        for (const [ox, oy] of FISHING_ROD_LINE_STEPS) {
+          ctx.fillRect(sx + ox, sy + oy, 1, 1);
+        }
+        ctx.fillRect(sx + 14, sy, 2, 2);
+      }
+
       function drawSwordIcon(ctx, box, sx, sy, colors) {
         const cx = sx + box / 2;
         const bladeW = Math.max(1, Math.round(box * 0.125));
@@ -318,6 +378,9 @@
         if (type === 'sword') return drawSwordIcon(ctx, TILE, sx, sy, colors);
         if (type === 'bow') return drawBowIcon(ctx, TILE, sx, sy, colors);
         if (type === 'berry') return drawBerryDots(ctx, sx, sy, colors.primary);
+        if (type === 'reed') return drawReedIcon(ctx, sx, sy, colors);
+        if (type === 'rope') return drawRopeIcon(ctx, sx, sy, colors);
+        if (type === 'fishingRod') return drawFishingRodIcon(ctx, sx, sy, colors);
         const size = Math.max(4, Math.round(TILE * 0.4));
         const ix = sx + (TILE - size) / 2,
           iy = sy + (TILE - size) / 2;
@@ -391,6 +454,10 @@
       addStaticObstacle('cactus', (ctx) => {
         drawTile(ctx, 0, 0);
         drawCactusBody(ctx, 0, 0, OBSTACLE_DEFS.cactus, ITEM_DEFS.cactusFruit);
+      });
+      addStaticObstacle('reed', (ctx) => {
+        drawTile(ctx, 0, 0);
+        drawReedIcon(ctx, 0, 0, OBSTACLE_DEFS.reed);
       });
 
       // tree: trunk cell below, canopy one tile above — same y-sorted look as

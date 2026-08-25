@@ -74,6 +74,22 @@ export const TREE_RING_MIN = 2;
 export const TREE_RING_MAX = 5;
 export const TREE_SPAWN_CHANCE = 0.05;
 
+// reeds (an OBSTACLE_DEFS entry, see below — wild and pickable like
+// berryBush) grow right in the water itself rather than beside it: ring
+// distance 0, i.e. actual oasis cells (min===max===0) — unlike bush/tree,
+// which are never allowed onto an oasis cell at all (see the d>0 guards in
+// buildVegetationRing). Further restricted to the shoreline only
+// (isOasisEdgeCell in worldgen.ts excludes any water cell fully surrounded
+// by more water), so reed fringes the pond's edge rather than scattering
+// across its middle. Rolled in the same BFS pass so a cell already claimed
+// by a bush or tree is never also claimed by reed (moot in practice since
+// bush/tree can't land on ring 0 anyway). A noticeably higher chance than
+// bush/tree since it's competing for space only against the shoreline's
+// own (typically small) cell count.
+export const REED_RING_MIN = 0;
+export const REED_RING_MAX = 0;
+export const REED_SPAWN_CHANCE = 0.35;
+
 // ---- cactus fruit: unlike the oasis-ring bushes/trees above, cacti scatter
 // across the *whole* desert (see buildCactusScatter in worldgen.ts) — food
 // worth exploring for, not clustered around the one water source. Rolled
@@ -184,6 +200,18 @@ export const OBSTACLE_DEFS: Record<
     allowItem: false,
     colors: { primary: '#a9773f', secondary: '#6b4c22' },
   },
+  // a reed clump growing right at the oasis's edge (see buildVegetationRing
+  // in worldgen.ts and REED_RING_MIN/MAX above) — wild and pickable like
+  // berryBush, no HP/combat needed to harvest it. Drawn as a stalk cluster
+  // rather than the generic nested-square body (see drawReedIcon in
+  // render/rendering.ts). Combines with a second reed into rope (see
+  // RECIPES in systems/combine.ts).
+  reed: {
+    solid: true,
+    pickable: true,
+    allowItem: false,
+    colors: { primary: '#8fae4a', secondary: '#4f6b24' },
+  },
 };
 
 // hp a tree has before fellTree (systems/combat.ts) swaps it for a plain
@@ -277,10 +305,10 @@ export const ITEM_DEFS: Record<
   sword: {
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
-  // crafted from wood + ingot (see RECIPES in systems/combine.ts) — see
+  // crafted from wood + rope (see RECIPES in systems/combine.ts) — see
   // WEAPON_DEFS below for its ranged attack stats. Shares wood's colors
-  // (see OBSTACLE_DEFS.wood above) rather than ingot's, since the
-  // shaft/limb is what reads visually, not the arrowhead
+  // (see OBSTACLE_DEFS.wood above) rather than rope's, since the
+  // shaft/limb is what reads visually, not the string
   bow: {
     colors: { primary: '#a9773f', secondary: '#6b4c22' },
   },
@@ -307,6 +335,21 @@ export const ITEM_DEFS: Record<
   // the two still read apart.
   poop: {
     colors: { primary: '#4a3323', secondary: '#2b1d13' },
+  },
+  // crafted from reed + reed (see OBSTACLE_DEFS.reed above and RECIPES in
+  // systems/combine.ts) — a braided tan/khaki, distinct from wood's more
+  // orange-brown
+  rope: {
+    colors: { primary: '#d8c48a', secondary: '#a4854a' },
+  },
+  // crafted from reed + rope (see RECIPES in systems/combine.ts) — recipe
+  // + item only for now, no fishing/catch mechanic yet. Reed's own green
+  // as the pole (primary) paired with rope's tan as the line (secondary),
+  // so it visually reads as "built from those two" rather than a fresh
+  // unrelated palette. Drawn with its own pole-and-line icon rather than
+  // the generic item square (see drawFishingRodIcon in rendering.ts).
+  fishingRod: {
+    colors: { primary: '#8fae4a', secondary: '#a4854a' },
   },
 };
 

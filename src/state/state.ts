@@ -42,6 +42,9 @@ import {
   OBSTACLE_DEFS,
   ORE_SPAWN_CHANCE,
   PLAYER_MAX_HP,
+  REED_RING_MAX,
+  REED_RING_MIN,
+  REED_SPAWN_CHANCE,
   RESOURCE_PLACEMENT_SALT,
   SPAWN_X,
   SPAWN_Y,
@@ -490,13 +493,18 @@ function buildWorldLayers(
   for (const key of stones) obstacles.set(key, 'stone');
 
   const vegRng = mulberry32(seed ^ VEGETATION_PLACEMENT_SALT);
-  const { bushes, trees: treeCells } = buildVegetationRing(
+  const {
+    bushes,
+    trees: treeCells,
+    reeds,
+  } = buildVegetationRing(
     vegRng,
     oasis,
     MAP_W,
     MAP_H,
     { min: BUSH_RING_MIN, max: BUSH_RING_MAX, chance: BUSH_SPAWN_CHANCE },
     { min: TREE_RING_MIN, max: TREE_RING_MAX, chance: TREE_SPAWN_CHANCE },
+    { min: REED_RING_MIN, max: REED_RING_MAX, chance: REED_SPAWN_CHANCE },
   );
   const floor = new Map<string, FloorType>();
   const trees = new Map<string, Tree>();
@@ -514,6 +522,16 @@ function buildWorldLayers(
     const [x, y] = key.split(',').map(Number);
     trees.set(key, makeTreeAt(x, y));
   }
+  // wild and pickable like berryBush above, no floor/HP of its own — see
+  // OBSTACLE_DEFS.reed in constants.ts. Unlike bushes/trees, reed cells are
+  // typically oasis (water) cells themselves (see REED_RING_MIN/MAX), so
+  // this deliberately doesn't exclude `oasis` — patchGroundAtlasTile draws
+  // its base tile from the real map value, so the water tint still shows
+  // through underneath (see render/ground-atlas.ts)
+  for (const key of reeds) {
+    if (stones.has(key) || bushes.has(key) || treeCells.has(key)) continue;
+    obstacles.set(key, 'reed');
+  }
 
   // scattered across the whole map, not just the oasis ring — see
   // buildCactusScatter's comment in worldgen.ts
@@ -523,6 +541,7 @@ function buildWorldLayers(
     ...oasis,
     ...bushes,
     ...treeCells,
+    ...reeds,
   ]);
   const cactusCells = buildCactusScatter(
     cactusRng,
@@ -552,6 +571,7 @@ function buildWorldLayers(
         resourceItems.push({ x: cell.x, y: cell.y, type: 'ore' });
     }
   }
+
   return {
     floor,
     obstacles,

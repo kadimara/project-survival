@@ -20,15 +20,23 @@ export const RECIPES: CombineRecipe[] = [
   // campfire above
   { held: 'coal', target: 'stone', result: 'furnace' },
   { held: 'ingot', target: 'ingot', result: 'sword' },
-  // shaft + arrowhead => bow (see WEAPON_DEFS in constants.ts for its
-  // ranged attack stats)
-  { held: 'wood', target: 'ingot', result: 'bow' },
+  // shaft + string => bow (see WEAPON_DEFS in constants.ts for its ranged
+  // attack stats) — was wood + ingot (a metal arrowhead) until rope took
+  // over the role a bowstring actually plays
+  { held: 'wood', target: 'rope', result: 'bow' },
   // dig poop into dirt => soil, a floor result rather than the usual
   // obstacle/item one (see setOccupant in state/state.ts for how that's
   // routed) — the only source of soil in the game, since world-gen never
   // places any (see buildWorldLayers in state/state.ts); a berryBush
   // (see systems/farming.ts) has to be moved onto soil made this way
   { held: 'dirt', target: 'poop', result: 'soil' },
+  // two reeds (gathered from the oasis's edge, see buildVegetationRing in
+  // worldgen.ts) braid into rope — same "two of the same raw material"
+  // shape as ingot + ingot => sword above
+  { held: 'reed', target: 'reed', result: 'rope' },
+  // pole + line => fishingRod — recipe + item only for now, no fishing/
+  // catch mechanic yet (see ITEM_DEFS.fishingRod in constants.ts)
+  { held: 'reed', target: 'rope', result: 'fishingRod' },
 ];
 
 function recipeKey(held: CarryType, target: CarryType): string {

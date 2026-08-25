@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildOasisPatch,
+  buildVegetationRing,
   type Cell,
   findClusterBorderTiles,
   mulberry32,
@@ -74,6 +75,114 @@ describe('buildOasisPatch', () => {
       expect(y).toBeLessThan(20);
     }
     expect(cells.size).toBeGreaterThan(0);
+  });
+});
+
+describe('buildVegetationRing', () => {
+  // a single-cell "oasis" at a fixed point makes ring distance equal to
+  // Chebyshev-free 4-directional grid distance from that one point, easy to
+  // check by hand below
+  const oasis = new Set(['10,10']);
+
+  it('only places reeds within the given ring-distance band from the oasis', () => {
+    const { reeds } = buildVegetationRing(
+      mulberry32(1),
+      oasis,
+      300,
+      300,
+      { min: 1, max: 2, chance: 0 }, // bushes disabled so they never steal a reed's cell
+      { min: 2, max: 5, chance: 0 }, // trees disabled likewise
+      { min: 1, max: 1, chance: 1 }, // reeds always claim their one ring
+    );
+    expect(reeds.size).toBeGreaterThan(0);
+    for (const key of reeds) {
+      const [x, y] = key.split(',').map(Number);
+      const dist = Math.abs(x - 10) + Math.abs(y - 10);
+      expect(dist).toBe(1);
+    }
+  });
+
+  it('lets reed claim an oasis (ring-0) cell, but never bush/tree even when their band nominally covers 0', () => {
+    const { bushes, trees, reeds } = buildVegetationRing(
+      mulberry32(3),
+      oasis,
+      300,
+      300,
+      { min: 0, max: 2, chance: 1 }, // would claim ring 0 too if not guarded
+      { min: 0, max: 5, chance: 1 }, // same
+      { min: 0, max: 0, chance: 1 }, // reed's real-world band — water itself
+    );
+    expect(reeds.has('10,10')).toBe(true);
+    expect(bushes.has('10,10')).toBe(false);
+    expect(trees.has('10,10')).toBe(false);
+  });
+
+  it('excludes a water cell fully surrounded by more water, even though it is still ring 0', () => {
+    // a solid 3x3 pond — '11,11' is the one cell with oasis on all 4 sides,
+    // every other cell borders dry land
+    const pond = new Set<string>();
+    for (let y = 10; y <= 12; y++)
+      for (let x = 10; x <= 12; x++) pond.add(x + ',' + y);
+
+    const { reeds } = buildVegetationRing(
+      mulberry32(11),
+      pond,
+      300,
+      300,
+      { min: 1, max: 2, chance: 0 },
+      { min: 2, max: 5, chance: 0 },
+      { min: 0, max: 0, chance: 1 }, // reed always claims every eligible ring-0 cell
+    );
+    expect(reeds.has('11,11')).toBe(false);
+    for (const key of pond) {
+      if (key !== '11,11') expect(reeds.has(key)).toBe(true);
+    }
+  });
+
+  it('never lets a cell be claimed by more than one of bushes/trees/reeds', () => {
+    const { bushes, trees, reeds } = buildVegetationRing(
+      mulberry32(5),
+      oasis,
+      300,
+      300,
+      { min: 1, max: 2, chance: 0.9 },
+      { min: 1, max: 3, chance: 0.9 },
+      { min: 1, max: 3, chance: 0.9 },
+    );
+    for (const key of reeds) {
+      expect(bushes.has(key)).toBe(false);
+      expect(trees.has(key)).toBe(false);
+    }
+    for (const key of bushes) expect(trees.has(key)).toBe(false);
+  });
+
+  it('is deterministic for the same rng sequence', () => {
+    const bands = [
+      { min: 1, max: 2, chance: 0.15 },
+      { min: 2, max: 5, chance: 0.05 },
+      { min: 1, max: 1, chance: 0.2 },
+    ] as const;
+    const a = buildVegetationRing(
+      mulberry32(42),
+      oasis,
+      300,
+      300,
+      bands[0],
+      bands[1],
+      bands[2],
+    );
+    const b = buildVegetationRing(
+      mulberry32(42),
+      oasis,
+      300,
+      300,
+      bands[0],
+      bands[1],
+      bands[2],
+    );
+    expect(Array.from(a.reeds).sort()).toEqual(Array.from(b.reeds).sort());
+    expect(Array.from(a.bushes).sort()).toEqual(Array.from(b.bushes).sort());
+    expect(Array.from(a.trees).sort()).toEqual(Array.from(b.trees).sort());
   });
 });
 

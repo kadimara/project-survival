@@ -49,7 +49,8 @@ const SAVE_KEY = 'project-survival-save-v1';
 // 'dirt' ObstacleType, also reclaimed as a FloorType. Both are deliberately
 // left unassigned rather than reused, so there's no ambiguity decoding an
 // old save. 6 keeps its old id across the fiber -> berryBush rename, same
-// obstacle, new name. 9 (campfire) is the next free id after 8.
+// obstacle, new name. 9 (campfire) is the next free id after 8. reed is
+// added at the next free id after that (9).
 const OBSTACLE_TO_ID: Record<ObstacleType, number> = {
   stone: 1,
   furnace: 3,
@@ -58,6 +59,7 @@ const OBSTACLE_TO_ID: Record<ObstacleType, number> = {
   tree: 7,
   cactus: 8,
   campfire: 9,
+  reed: 10,
 };
 const ID_TO_OBSTACLE: (ObstacleType | undefined)[] = [
   undefined,
@@ -70,6 +72,7 @@ const ID_TO_OBSTACLE: (ObstacleType | undefined)[] = [
   'tree',
   'cactus',
   'campfire',
+  'reed',
 ];
 
 function encodeObstacleGrid(obstacles: Map<string, ObstacleType>): string {
@@ -185,7 +188,10 @@ function base64ToBytes(b64: string): Uint8Array {
 // retired (used to be 'energy'/'energySeed', both removed) — left
 // deliberately unassigned rather than reused, same convention as
 // OBSTACLE_TO_ID above. rawMeat/meat/coal are added at the next free ids
-// after the previous max (9).
+// after the previous max (9). rope is added at the next free id after that
+// (12) — id 13 (formerly reed, moved to OBSTACLE_TO_ID above) is
+// deliberately left unassigned rather than reused. fishingRod is added at
+// the next free id after rope (14).
 const ITEM_TO_ID: Record<ItemType, number> = {
   ore: 3,
   ingot: 4,
@@ -197,6 +203,8 @@ const ITEM_TO_ID: Record<ItemType, number> = {
   rawMeat: 10,
   meat: 11,
   coal: 12,
+  rope: 14,
+  fishingRod: 15,
 };
 const ID_TO_ITEM: (ItemType | undefined)[] = [
   undefined,
@@ -212,6 +220,9 @@ const ID_TO_ITEM: (ItemType | undefined)[] = [
   'rawMeat',
   'meat',
   'coal',
+  undefined,
+  'rope',
+  'fishingRod',
 ];
 
 function encodeItems(items: Map<string, Item>): number[] {

@@ -396,6 +396,101 @@ export function drawBowIcon(
   }
 }
 
+// the reed clump obstacle's body (see OBSTACLE_DEFS.reed in constants.ts):
+// a dense cluster of grass-like stalks rooted at the tile's bottom edge,
+// each capped with a darker seed head — reads as a stand of cut stalks
+// rather than a chunk, unlike the scattered flecks ore/berry use above.
+// Also drawn wherever a held/in-progress reed uses the generic CarryType
+// icon path (see drawItemIcon below). Six closely-packed, slightly
+// overlapping stalks (touching or 1px apart) rather than a sparse few, so
+// it reads as a fuller stand — irregular heights, same "organic, not
+// uniform" idea as BERRY_DOT_OFFSETS/ORE_DOT_OFFSETS.
+const REED_STALK_OFFSETS: [number, number, number][] = [
+  // [x, stalk height, seed-head height]
+  [2, 8, 2],
+  [4, 12, 3],
+  [6, 9, 2],
+  [9, 13, 4],
+  [11, 10, 3],
+  [13, 8, 2],
+];
+const REED_STALK_W = 2;
+
+export function drawReedIcon(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  const baseY = sy + 15;
+  for (const [ox, h, headH] of REED_STALK_OFFSETS) {
+    ctx.fillStyle = colors.primary;
+    ctx.fillRect(sx + ox - 1, baseY - h, REED_STALK_W, h);
+    ctx.fillStyle = colors.secondary;
+    ctx.fillRect(sx + ox - 1, baseY - h - headH + 2, REED_STALK_W, headH);
+  }
+}
+
+// rope ground item: a diagonal cord built from closely-overlapping
+// segments (step distance smaller than the thickness, unlike drawBowIcon's
+// evenly-spaced limb segments), alternating primary/secondary every
+// segment with a small perpendicular zigzag — reads as one continuous
+// twisted/braided strand crossing the tile, like a barber pole, rather
+// than a checkerboard of separate blocks.
+const ROPE_SEGMENTS = 8;
+const ROPE_THICKNESS = 3;
+
+export function drawRopeIcon(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  const span = 16 - ROPE_THICKNESS;
+  for (let i = 0; i < ROPE_SEGMENTS; i++) {
+    const t = i / (ROPE_SEGMENTS - 1);
+    const wobble = i % 2 === 0 ? -1 : 1;
+    const x = sx + Math.round(t * span) + wobble;
+    const y = sy + Math.round(t * span) - wobble;
+    ctx.fillStyle = i % 2 === 0 ? colors.primary : colors.secondary;
+    ctx.fillRect(x, y, ROPE_THICKNESS, ROPE_THICKNESS);
+  }
+}
+
+// fishingRod ground item: a diagonal pole (primary) built from the same
+// closely-overlapping-block staircase idea as drawRopeIcon, continuing
+// past its tip into a thinner line (secondary) that ends in a small hook —
+// reads as a pole-and-line silhouette rather than the generic item square.
+const FISHING_ROD_POLE_STEPS: [number, number][] = [
+  [2, 14],
+  [4, 11],
+  [6, 9],
+  [8, 6],
+  [11, 5],
+];
+const FISHING_ROD_LINE_STEPS: [number, number][] = [
+  [11, 5],
+  [13, 3],
+  [15, 1],
+];
+
+export function drawFishingRodIcon(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  ctx.fillStyle = colors.primary;
+  for (const [ox, oy] of FISHING_ROD_POLE_STEPS) {
+    ctx.fillRect(sx + ox - 1, sy + oy - 1, 3, 3);
+  }
+  ctx.fillStyle = colors.secondary;
+  for (const [ox, oy] of FISHING_ROD_LINE_STEPS) {
+    ctx.fillRect(sx + ox, sy + oy, 1, 1);
+  }
+  ctx.fillRect(sx + 14, sy, 2, 2); // hook, at the line's end
+}
+
 // draws whichever visual `type` uses as a loose item — shared by
 // state.items and an in-progress furnace/campfire job (state.smelters/
 // state.campfireJobs) so a job renders exactly like the item (or, for a
@@ -423,6 +518,18 @@ export function drawItemIcon(
   }
   if (type === 'berry') {
     drawBerryDots(ctx, sx, sy, colors.primary);
+    return;
+  }
+  if (type === 'reed') {
+    drawReedIcon(ctx, sx, sy, colors);
+    return;
+  }
+  if (type === 'rope') {
+    drawRopeIcon(ctx, sx, sy, colors);
+    return;
+  }
+  if (type === 'fishingRod') {
+    drawFishingRodIcon(ctx, sx, sy, colors);
     return;
   }
   const size = Math.max(4, Math.round(TILE * 0.4));

@@ -22,7 +22,14 @@ export type Hand = 'left' | 'right';
 // around, so it doesn't need `solid`/occupant-combine semantics.
 export type FloorType = 'dirt' | 'soil';
 export type ObstacleType =
-  'stone' | 'furnace' | 'campfire' | 'wood' | 'berryBush' | 'tree' | 'cactus';
+  | 'stone'
+  | 'furnace'
+  | 'campfire'
+  | 'wood'
+  | 'berryBush'
+  | 'tree'
+  | 'cactus'
+  | 'reed';
 export type ItemType =
   | 'rawMeat'
   | 'meat'
@@ -33,7 +40,9 @@ export type ItemType =
   | 'bow'
   | 'cactusFruit'
   | 'berry'
-  | 'poop';
+  | 'poop'
+  | 'rope'
+  | 'fishingRod';
 export type CarryType = ObstacleType | ItemType | FloorType;
 
 // 'jerboa' is a small skittish desert rodent (and the training dummy's base

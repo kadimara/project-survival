@@ -386,6 +386,20 @@ export function buildOasisPatch(
   return cells;
 }
 
+// a ring-0 (oasis/water) cell only counts as reed-eligible if it actually
+// borders dry land — an interior water cell with oasis on all 4 sides is
+// the middle of the pond, not its shoreline, so it's excluded even though
+// it's still ring distance 0
+function isOasisEdgeCell(key: string, oasis: Set<string>): boolean {
+  const [x, y] = key.split(',').map(Number);
+  return (
+    !oasis.has(x + 1 + ',' + y) ||
+    !oasis.has(x - 1 + ',' + y) ||
+    !oasis.has(x + ',' + (y + 1)) ||
+    !oasis.has(x + ',' + (y - 1))
+  );
+}
+
 // scatters vegetation in a ring band around the oasis's actual (wobbly)
 // cell set, rather than assuming a clean circle — a multi-source 4-
 // directional BFS out from every oasis cell gives each nearby cell its grid
@@ -393,7 +407,14 @@ export function buildOasisPatch(
 // noise-perturbed boundary the same way buildStones' spawn-safety carve
 // hugs a fixed point (see SPAWN_SAFETY_R above). Bushes are checked first
 // and claim their ring at the given chance; trees are only rolled on cells
-// bushes didn't take, so a cell is never claimed by both.
+// bushes didn't take; reeds are only rolled on cells neither took — so a
+// cell is never claimed by more than one. Ring distance 0 is an oasis cell
+// itself (actual water) — bush/tree are never allowed to land there
+// (real plants, not lily pads), but reed's own band can include it (see
+// REED_RING_MIN/MAX in constants.ts), since reed is meant to grow in the
+// water — restricted to the shoreline (isOasisEdgeCell above) rather than
+// the whole pond, so it reads as fringing the water's edge rather than
+// scattered across its middle.
 export function buildVegetationRing(
   rng: Rng,
   oasis: Set<string>,
@@ -401,8 +422,9 @@ export function buildVegetationRing(
   mapH: number,
   bush: { min: number; max: number; chance: number },
   tree: { min: number; max: number; chance: number },
-): { bushes: Set<string>; trees: Set<string> } {
-  const maxRing = Math.max(bush.max, tree.max);
+  reed: { min: number; max: number; chance: number },
+): { bushes: Set<string>; trees: Set<string>; reeds: Set<string> } {
+  const maxRing = Math.max(bush.max, tree.max, reed.max);
   const dist = new Map<string, number>();
   let frontier: Cell[] = [];
   for (const key of oasis) {
@@ -434,15 +456,22 @@ export function buildVegetationRing(
 
   const bushes = new Set<string>();
   const trees = new Set<string>();
+  const reeds = new Set<string>();
   for (const [key, d] of dist) {
-    if (d === 0) continue; // an oasis cell itself, not a candidate
-    if (d >= bush.min && d <= bush.max && rng() < bush.chance) {
+    if (d > 0 && d >= bush.min && d <= bush.max && rng() < bush.chance) {
       bushes.add(key);
-    } else if (d >= tree.min && d <= tree.max && rng() < tree.chance) {
+    } else if (d > 0 && d >= tree.min && d <= tree.max && rng() < tree.chance) {
       trees.add(key);
+    } else if (
+      d >= reed.min &&
+      d <= reed.max &&
+      (d > 0 || isOasisEdgeCell(key, oasis)) &&
+      rng() < reed.chance
+    ) {
+      reeds.add(key);
     }
   }
-  return { bushes, trees };
+  return { bushes, trees, reeds };
 }
 
 // scatters cacti independently across every open tile of the map, unlike
