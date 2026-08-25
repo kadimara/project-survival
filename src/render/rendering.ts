@@ -431,14 +431,20 @@ export function drawReedIcon(
   }
 }
 
-// rope ground item: a diagonal cord built from closely-overlapping
-// segments (step distance smaller than the thickness, unlike drawBowIcon's
-// evenly-spaced limb segments), alternating primary/secondary every
-// segment with a small perpendicular zigzag — reads as one continuous
-// twisted/braided strand crossing the tile, like a barber pole, rather
-// than a checkerboard of separate blocks.
-const ROPE_SEGMENTS = 8;
-const ROPE_THICKNESS = 3;
+// rope ground item: a coiled spiral winding outward from the tile's
+// center, like looking straight down on a coil of rope — built from small
+// overlapping blocks walked along an Archimedean spiral (radius grows
+// linearly with angle) rather than a stroked curve, so it stays blocky
+// like the rest of the game's art instead of an anti-aliased line. Banded
+// in alternating primary/secondary every few steps (not every single
+// step — a tighter band than drawFurnaceGlow's flicker rate would read as
+// noise at this size) so it reads as a twisted strand rather than a solid
+// ring.
+const ROPE_TURNS = 1.4;
+const ROPE_STEPS = 26;
+const ROPE_MAX_RADIUS = 6;
+const ROPE_BLOCK = 3;
+const ROPE_BAND_STEPS = 3;
 
 export function drawRopeIcon(
   ctx: CanvasRenderingContext2D,
@@ -446,14 +452,19 @@ export function drawRopeIcon(
   sy: number,
   colors: { primary: string; secondary: string },
 ): void {
-  const span = 16 - ROPE_THICKNESS;
-  for (let i = 0; i < ROPE_SEGMENTS; i++) {
-    const t = i / (ROPE_SEGMENTS - 1);
-    const wobble = i % 2 === 0 ? -1 : 1;
-    const x = sx + Math.round(t * span) + wobble;
-    const y = sy + Math.round(t * span) - wobble;
-    ctx.fillStyle = i % 2 === 0 ? colors.primary : colors.secondary;
-    ctx.fillRect(x, y, ROPE_THICKNESS, ROPE_THICKNESS);
+  const cx = sx + 8,
+    cy = sy + 8;
+  for (let i = 0; i <= ROPE_STEPS; i++) {
+    const t = i / ROPE_STEPS;
+    const angle = t * ROPE_TURNS * Math.PI * 2;
+    const radius = t * ROPE_MAX_RADIUS;
+    const x = Math.round(cx + Math.cos(angle) * radius);
+    const y = Math.round(cy + Math.sin(angle) * radius);
+    ctx.fillStyle =
+      Math.floor(i / ROPE_BAND_STEPS) % 2 === 0
+        ? colors.primary
+        : colors.secondary;
+    ctx.fillRect(x - 1, y - 1, ROPE_BLOCK, ROPE_BLOCK);
   }
 }
 
