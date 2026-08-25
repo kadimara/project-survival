@@ -22,7 +22,14 @@ export type Hand = 'left' | 'right';
 // around, so it doesn't need `solid`/occupant-combine semantics.
 export type FloorType = 'dirt' | 'soil';
 export type ObstacleType =
-  'stone' | 'furnace' | 'campfire' | 'wood' | 'berryBush' | 'tree' | 'cactus';
+  | 'stone'
+  | 'furnace'
+  | 'campfire'
+  | 'wood'
+  | 'berryBush'
+  | 'tree'
+  | 'cactus'
+  | 'reed';
 export type ItemType =
   | 'rawMeat'
   | 'meat'
@@ -34,7 +41,6 @@ export type ItemType =
   | 'cactusFruit'
   | 'berry'
   | 'poop'
-  | 'reed'
   | 'rope';
 export type CarryType = ObstacleType | ItemType | FloorType;
 

@@ -28,6 +28,7 @@ import {
   drawFloorOverlay,
   drawObstacle,
   drawObstacleOverlay,
+  drawReedIcon,
   drawTile,
   drawTreeTrunk,
 } from './rendering';
@@ -67,6 +68,8 @@ export function patchGroundAtlasTile(
       );
     else if (obstacleType === 'berryBush')
       drawBerryBushBody(ctx, TILE, sx, sy, OBSTACLE_DEFS.berryBush.colors);
+    else if (obstacleType === 'reed')
+      drawReedIcon(ctx, sx, sy, OBSTACLE_DEFS.reed.colors);
     else if (obstacleType)
       drawObstacleOverlay(
         ctx,
@@ -99,6 +102,10 @@ export function patchGroundAtlasTile(
     // keeps the body legible either way
     drawTile(ctx, TILE, DIRT, sx, sy);
     drawBerryBushBody(ctx, TILE, sx, sy, OBSTACLE_DEFS.berryBush.colors);
+  } else if (type === 'reed') {
+    // wild, standing on no floor at all — same treatment as berryBush above
+    drawTile(ctx, TILE, DIRT, sx, sy);
+    drawReedIcon(ctx, sx, sy, OBSTACLE_DEFS.reed.colors);
   } else if (type) drawObstacle(ctx, TILE, sx, sy, type);
   else drawTile(ctx, TILE, map[y][x], sx, sy);
 }

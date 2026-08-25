@@ -10,6 +10,7 @@ const ALL_CARRY_TYPES: CarryType[] = [
   'campfire',
   'wood',
   'berryBush',
+  'reed',
   'rawMeat',
   'meat',
   'coal',
@@ -19,7 +20,6 @@ const ALL_CARRY_TYPES: CarryType[] = [
   'bow',
   'berry',
   'poop',
-  'reed',
   'rope',
 ];
 

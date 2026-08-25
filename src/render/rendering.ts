@@ -396,16 +396,23 @@ export function drawBowIcon(
   }
 }
 
-// reed ground item: a small cluster of grass-like stalks rooted at the
-// tile's bottom edge, each capped with a darker seed head — reads as a cut
-// stalk rather than a chunk, unlike the scattered flecks ore/berry use
-// above. Heights/x-offsets are fixed, irregular values (not a neat grid),
-// same "organic, not uniform" idea as BERRY_DOT_OFFSETS/ORE_DOT_OFFSETS.
+// the reed clump obstacle's body (see OBSTACLE_DEFS.reed in constants.ts):
+// a dense cluster of grass-like stalks rooted at the tile's bottom edge,
+// each capped with a darker seed head — reads as a stand of cut stalks
+// rather than a chunk, unlike the scattered flecks ore/berry use above.
+// Also drawn wherever a held/in-progress reed uses the generic CarryType
+// icon path (see drawItemIcon below). Six closely-packed, slightly
+// overlapping stalks (touching or 1px apart) rather than a sparse few, so
+// it reads as a fuller stand — irregular heights, same "organic, not
+// uniform" idea as BERRY_DOT_OFFSETS/ORE_DOT_OFFSETS.
 const REED_STALK_OFFSETS: [number, number, number][] = [
   // [x, stalk height, seed-head height]
-  [4, 9, 3],
-  [8, 12, 4],
-  [12, 10, 3],
+  [2, 8, 2],
+  [4, 12, 3],
+  [6, 9, 2],
+  [9, 13, 4],
+  [11, 10, 3],
+  [13, 8, 2],
 ];
 const REED_STALK_W = 2;
 

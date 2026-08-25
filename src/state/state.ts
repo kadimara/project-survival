@@ -522,6 +522,12 @@ function buildWorldLayers(
     const [x, y] = key.split(',').map(Number);
     trees.set(key, makeTreeAt(x, y));
   }
+  // wild and pickable like berryBush above, no floor/HP of its own — see
+  // OBSTACLE_DEFS.reed in constants.ts
+  for (const key of reeds) {
+    if (stones.has(key) || bushes.has(key) || treeCells.has(key)) continue;
+    obstacles.set(key, 'reed');
+  }
 
   // scattered across the whole map, not just the oasis ring — see
   // buildCactusScatter's comment in worldgen.ts
@@ -531,6 +537,7 @@ function buildWorldLayers(
     ...oasis,
     ...bushes,
     ...treeCells,
+    ...reeds,
   ]);
   const cactusCells = buildCactusScatter(
     cactusRng,
@@ -559,15 +566,6 @@ function buildWorldLayers(
       if (rng() < ORE_SPAWN_CHANCE)
         resourceItems.push({ x: cell.x, y: cell.y, type: 'ore' });
     }
-  }
-
-  // reeds grow right at the oasis's edge (see buildVegetationRing above) —
-  // a loose walkable item like ore, not a solid obstacle like bush/tree, so
-  // it just needs to avoid overlapping whatever already claimed the cell
-  for (const key of reeds) {
-    if (stones.has(key) || bushes.has(key) || treeCells.has(key)) continue;
-    const [x, y] = key.split(',').map(Number);
-    resourceItems.push({ x, y, type: 'reed' });
   }
 
   return {

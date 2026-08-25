@@ -74,14 +74,16 @@ export const TREE_RING_MIN = 2;
 export const TREE_RING_MAX = 5;
 export const TREE_SPAWN_CHANCE = 0.05;
 
-// reeds ('reed' items, not obstacles — loose and pickable like ore, see
-// buildWorldLayers in state/state.ts) hug the water tighter than either
-// bush or tree: a one-tile-wide band right at the bank (min===max===1),
-// rolled in the same buildVegetationRing BFS pass so a cell already claimed
-// by a bush or tree is never also claimed by reed
+// reeds (an OBSTACLE_DEFS entry, see below — wild and pickable like
+// berryBush) hug the water tighter than either bush or tree: a one-tile-
+// wide band right at the bank (min===max===1), rolled in the same
+// buildVegetationRing BFS pass so a cell already claimed by a bush or tree
+// is never also claimed by reed. A noticeably higher chance than bush/tree
+// since a thin one-tile band needs a denser roll to still read as a patch
+// rather than a scattered rare find.
 export const REED_RING_MIN = 1;
 export const REED_RING_MAX = 1;
-export const REED_SPAWN_CHANCE = 0.2;
+export const REED_SPAWN_CHANCE = 0.35;
 
 // ---- cactus fruit: unlike the oasis-ring bushes/trees above, cacti scatter
 // across the *whole* desert (see buildCactusScatter in worldgen.ts) — food
@@ -192,6 +194,18 @@ export const OBSTACLE_DEFS: Record<
     pickable: false,
     allowItem: false,
     colors: { primary: '#a9773f', secondary: '#6b4c22' },
+  },
+  // a reed clump growing right at the oasis's edge (see buildVegetationRing
+  // in worldgen.ts and REED_RING_MIN/MAX above) — wild and pickable like
+  // berryBush, no HP/combat needed to harvest it. Drawn as a stalk cluster
+  // rather than the generic nested-square body (see drawReedIcon in
+  // render/rendering.ts). Combines with a second reed into rope (see
+  // RECIPES in systems/combine.ts).
+  reed: {
+    solid: true,
+    pickable: true,
+    allowItem: false,
+    colors: { primary: '#8fae4a', secondary: '#4f6b24' },
   },
 };
 
@@ -317,15 +331,9 @@ export const ITEM_DEFS: Record<
   poop: {
     colors: { primary: '#4a3323', secondary: '#2b1d13' },
   },
-  // grows in the vegetation ring right at the oasis's edge (see
-  // buildVegetationRing in worldgen.ts and REED_RING_MIN/MAX above) — a
-  // fresh grassy green, unlike anything else in ITEM_DEFS. Combines with a
-  // second reed into rope (see RECIPES in systems/combine.ts).
-  reed: {
-    colors: { primary: '#8fae4a', secondary: '#4f6b24' },
-  },
-  // crafted from reed + reed (see RECIPES in systems/combine.ts) — a
-  // braided tan/khaki, distinct from wood's more orange-brown
+  // crafted from reed + reed (see OBSTACLE_DEFS.reed above and RECIPES in
+  // systems/combine.ts) — a braided tan/khaki, distinct from wood's more
+  // orange-brown
   rope: {
     colors: { primary: '#d8c48a', secondary: '#a4854a' },
   },
