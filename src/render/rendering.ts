@@ -375,12 +375,8 @@ export function drawBowIcon(
   colors: { primary: string; secondary: string },
 ): void {
   const segments = 5;
-  const segH = box / segments;
-  // wide enough that consecutive segments always overlap horizontally
-  // despite their bulge offset changing, so the limb reads as one solid
-  // curve rather than a staircase with gaps
-  const limbW = Math.max(2, Math.round(box * 0.22));
-  const stringW = Math.max(1, Math.round(box * 0.1));
+  const limbW = Math.max(2, Math.round(box * 0.14));
+  const stringW = 1;
   const stringX = sx + Math.round(box * 0.3);
   // tip -> middle -> tip bulge offsets from the string, so the limb
   // segments read as a curve rather than a straight stack
@@ -391,8 +387,14 @@ export function drawBowIcon(
 
   ctx.fillStyle = colors.primary;
   for (let i = 0; i < segments; i++) {
+    // segment y-boundaries rounded from the box edges inward (rather than a
+    // fixed height per row) so rounding error mirrors top-to-bottom instead
+    // of accumulating downward — keeps the limb symmetric around its middle
+    // bulge now that segments are thin enough to show gaps/overlaps
+    const yStart = Math.round((i * box) / segments);
+    const yEnd = Math.round(((i + 1) * box) / segments);
     const bx = stringX + Math.round(box * bulge[i]);
-    ctx.fillRect(bx, sy + Math.round(i * segH), limbW, Math.ceil(segH) + 1);
+    ctx.fillRect(bx, sy + yStart, limbW, yEnd - yStart);
   }
 }
 
@@ -431,14 +433,17 @@ export function drawReedIcon(
   }
 }
 
-// rope ground item: a diagonal cord built from closely-overlapping
-// segments (step distance smaller than the thickness, unlike drawBowIcon's
-// evenly-spaced limb segments), alternating primary/secondary every
-// segment with a small perpendicular zigzag — reads as one continuous
-// twisted/braided strand crossing the tile, like a barber pole, rather
-// than a checkerboard of separate blocks.
-const ROPE_SEGMENTS = 8;
-const ROPE_THICKNESS = 3;
+// rope ground item: a coil wound outward from the tile's center, like
+// looking straight down on a rolled-up rope — built from small overlapping
+// blocks walked along an Archimedean spiral (radius grows linearly with
+// angle) rather than a stroked curve, so it stays blocky like the rest of
+// the game's art instead of an anti-aliased line. Flat secondary color (the
+// darker braided tan) rather than banded, so the coil shape itself reads
+// clearly.
+const ROPE_TURNS = 1.4;
+const ROPE_STEPS = 26;
+const ROPE_MAX_RADIUS = 6;
+const ROPE_BLOCK = 3;
 
 export function drawRopeIcon(
   ctx: CanvasRenderingContext2D,
@@ -446,33 +451,35 @@ export function drawRopeIcon(
   sy: number,
   colors: { primary: string; secondary: string },
 ): void {
-  const span = 16 - ROPE_THICKNESS;
-  for (let i = 0; i < ROPE_SEGMENTS; i++) {
-    const t = i / (ROPE_SEGMENTS - 1);
-    const wobble = i % 2 === 0 ? -1 : 1;
-    const x = sx + Math.round(t * span) + wobble;
-    const y = sy + Math.round(t * span) - wobble;
-    ctx.fillStyle = i % 2 === 0 ? colors.primary : colors.secondary;
-    ctx.fillRect(x, y, ROPE_THICKNESS, ROPE_THICKNESS);
+  const cx = sx + 8;
+  const cy = sy + 8;
+  ctx.fillStyle = colors.secondary;
+  for (let i = 0; i <= ROPE_STEPS; i++) {
+    const t = i / ROPE_STEPS;
+    const angle = t * ROPE_TURNS * Math.PI * 2;
+    const radius = t * ROPE_MAX_RADIUS;
+    const x = Math.round(cx + Math.cos(angle) * radius);
+    const y = Math.round(cy + Math.sin(angle) * radius);
+    ctx.fillRect(x - 1, y - 1, ROPE_BLOCK, ROPE_BLOCK);
   }
 }
 
-// fishingRod ground item: a diagonal pole (primary) built from the same
-// closely-overlapping-block staircase idea as drawRopeIcon, continuing
-// past its tip into a thinner line (secondary) that ends in a small hook —
-// reads as a pole-and-line silhouette rather than the generic item square.
+// fishingRod ground item: a diagonal reed-colored pole (primary) built from
+// the same closely-overlapping-block staircase idea as drawRopeIcon, with a
+// straight rope-colored line (secondary) dropping straight down from the
+// pole's tip — reads as a pole-and-line silhouette rather than the generic
+// item square.
 const FISHING_ROD_POLE_STEPS: [number, number][] = [
   [2, 14],
   [4, 11],
   [6, 9],
   [8, 6],
-  [11, 5],
+  [10, 4],
+  [12, 2],
 ];
-const FISHING_ROD_LINE_STEPS: [number, number][] = [
-  [11, 5],
-  [13, 3],
-  [15, 1],
-];
+const FISHING_ROD_LINE_X = 12; // pole tip's x — the line hangs straight down from here
+const FISHING_ROD_LINE_TOP = 2; // pole tip's y
+const FISHING_ROD_LINE_BOTTOM = 15;
 
 export function drawFishingRodIcon(
   ctx: CanvasRenderingContext2D,
@@ -485,10 +492,12 @@ export function drawFishingRodIcon(
     ctx.fillRect(sx + ox - 1, sy + oy - 1, 3, 3);
   }
   ctx.fillStyle = colors.secondary;
-  for (const [ox, oy] of FISHING_ROD_LINE_STEPS) {
-    ctx.fillRect(sx + ox, sy + oy, 1, 1);
-  }
-  ctx.fillRect(sx + 14, sy, 2, 2); // hook, at the line's end
+  ctx.fillRect(
+    sx + FISHING_ROD_LINE_X,
+    sy + FISHING_ROD_LINE_TOP,
+    1,
+    FISHING_ROD_LINE_BOTTOM - FISHING_ROD_LINE_TOP,
+  );
 }
 
 // draws whichever visual `type` uses as a loose item — shared by
