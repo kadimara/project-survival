@@ -117,6 +117,28 @@ describe('buildVegetationRing', () => {
     expect(trees.has('10,10')).toBe(false);
   });
 
+  it('excludes a water cell fully surrounded by more water, even though it is still ring 0', () => {
+    // a solid 3x3 pond — '11,11' is the one cell with oasis on all 4 sides,
+    // every other cell borders dry land
+    const pond = new Set<string>();
+    for (let y = 10; y <= 12; y++)
+      for (let x = 10; x <= 12; x++) pond.add(x + ',' + y);
+
+    const { reeds } = buildVegetationRing(
+      mulberry32(11),
+      pond,
+      300,
+      300,
+      { min: 1, max: 2, chance: 0 },
+      { min: 2, max: 5, chance: 0 },
+      { min: 0, max: 0, chance: 1 }, // reed always claims every eligible ring-0 cell
+    );
+    expect(reeds.has('11,11')).toBe(false);
+    for (const key of pond) {
+      if (key !== '11,11') expect(reeds.has(key)).toBe(true);
+    }
+  });
+
   it('never lets a cell be claimed by more than one of bushes/trees/reeds', () => {
     const { bushes, trees, reeds } = buildVegetationRing(
       mulberry32(5),

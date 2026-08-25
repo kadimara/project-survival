@@ -386,6 +386,20 @@ export function buildOasisPatch(
   return cells;
 }
 
+// a ring-0 (oasis/water) cell only counts as reed-eligible if it actually
+// borders dry land — an interior water cell with oasis on all 4 sides is
+// the middle of the pond, not its shoreline, so it's excluded even though
+// it's still ring distance 0
+function isOasisEdgeCell(key: string, oasis: Set<string>): boolean {
+  const [x, y] = key.split(',').map(Number);
+  return (
+    !oasis.has(x + 1 + ',' + y) ||
+    !oasis.has(x - 1 + ',' + y) ||
+    !oasis.has(x + ',' + (y + 1)) ||
+    !oasis.has(x + ',' + (y - 1))
+  );
+}
+
 // scatters vegetation in a ring band around the oasis's actual (wobbly)
 // cell set, rather than assuming a clean circle — a multi-source 4-
 // directional BFS out from every oasis cell gives each nearby cell its grid
@@ -398,7 +412,9 @@ export function buildOasisPatch(
 // itself (actual water) — bush/tree are never allowed to land there
 // (real plants, not lily pads), but reed's own band can include it (see
 // REED_RING_MIN/MAX in constants.ts), since reed is meant to grow in the
-// water rather than beside it.
+// water — restricted to the shoreline (isOasisEdgeCell above) rather than
+// the whole pond, so it reads as fringing the water's edge rather than
+// scattered across its middle.
 export function buildVegetationRing(
   rng: Rng,
   oasis: Set<string>,
@@ -446,7 +462,12 @@ export function buildVegetationRing(
       bushes.add(key);
     } else if (d > 0 && d >= tree.min && d <= tree.max && rng() < tree.chance) {
       trees.add(key);
-    } else if (d >= reed.min && d <= reed.max && rng() < reed.chance) {
+    } else if (
+      d >= reed.min &&
+      d <= reed.max &&
+      (d > 0 || isOasisEdgeCell(key, oasis)) &&
+      rng() < reed.chance
+    ) {
       reeds.add(key);
     }
   }

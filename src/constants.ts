@@ -78,11 +78,14 @@ export const TREE_SPAWN_CHANCE = 0.05;
 // berryBush) grow right in the water itself rather than beside it: ring
 // distance 0, i.e. actual oasis cells (min===max===0) — unlike bush/tree,
 // which are never allowed onto an oasis cell at all (see the d>0 guards in
-// buildVegetationRing). Rolled in the same BFS pass so a cell already
-// claimed by a bush or tree is never also claimed by reed (moot in
-// practice since bush/tree can't land on ring 0 anyway). A noticeably
-// higher chance than bush/tree since it's now competing for space only
-// against the oasis's own (typically small) cell count.
+// buildVegetationRing). Further restricted to the shoreline only
+// (isOasisEdgeCell in worldgen.ts excludes any water cell fully surrounded
+// by more water), so reed fringes the pond's edge rather than scattering
+// across its middle. Rolled in the same BFS pass so a cell already claimed
+// by a bush or tree is never also claimed by reed (moot in practice since
+// bush/tree can't land on ring 0 anyway). A noticeably higher chance than
+// bush/tree since it's competing for space only against the shoreline's
+// own (typically small) cell count.
 export const REED_RING_MIN = 0;
 export const REED_RING_MAX = 0;
 export const REED_SPAWN_CHANCE = 0.35;
