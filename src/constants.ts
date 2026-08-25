@@ -29,6 +29,12 @@ export const ZOOM_LEVELS: ZoomLevel[] = [
 ];
 export const DEFAULT_ZOOM_INDEX = 1;
 
+// tap-vs-long-press on touch devices: hold past this long and the canvas
+// touch handler fires a right-hand action instead of a left-hand one;
+// moving past this many pixels before release cancels either action
+export const TOUCH_LONG_PRESS_MS = 500;
+export const TOUCH_MOVE_CANCEL_PX = 10;
+
 export const WORLD_TILE = 4;
 
 // ---- boulder-structure resources: buildStones' noise pass carves the
