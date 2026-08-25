@@ -49,9 +49,11 @@ function assertWorldWasReset(state: ReturnType<typeof createTestGameState>) {
   expect(player.tileX).toBe(SPAWN_X);
   expect(player.tileY).toBe(SPAWN_Y);
   expect(player.hp).toBe(player.maxHp);
-  expect(player.held).toBeNull();
+  expect(player.heldLeft).toBeNull();
+  expect(player.heldRight).toBeNull();
   expect(player.pendingAction).toBeNull();
   expect(player.attackTarget).toBeNull();
+  expect(player.attackHand).toBeNull();
   expect(player.path).toEqual([]);
   expect(player.attacked).toBe(false);
   expect(player.flashUntil).toBe(0);
@@ -131,7 +133,7 @@ describe('damagePlayer', () => {
     const hud = createTestHudRefs();
     const attacker = createTestEnemy(5, 5);
     state.player.path = [{ x: 1, y: 1 }];
-    state.player.pendingAction = { type: 'pickup', x: 2, y: 2 };
+    state.player.pendingAction = { type: 'pickup', x: 2, y: 2, hand: 'left' };
     damagePlayer(state, hud, 10, 1000, attacker);
     expect(state.player.attackTarget).toBe(attacker);
     expect(state.player.path).toEqual([]);

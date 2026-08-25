@@ -77,6 +77,7 @@ canvas#game {
   image-rendering: crisp-edges;
   display: block;
   cursor: pointer;
+  touch-action: none;
   max-width: 100%;
   max-height: 100%;
 }
@@ -241,13 +242,17 @@ canvas#game {
   border-color: var(--accent);
 }
 
-.use-item-btn {
-  display: none;
+.use-item-row {
   position: absolute;
   bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 5;
+  display: flex;
+  gap: 10px;
+}
+.use-item-btn {
+  display: none;
   align-items: center;
   gap: 6px;
   background: var(--panel);

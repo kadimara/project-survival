@@ -27,16 +27,18 @@
             <span class="stat-value" id="stat-hp">20/20</span>
           </div>
           <div class="stat">
-            <span class="stat-label">Carrying</span>
-            <span class="stat-value" id="stat-carry">nothing</span>
+            <span class="stat-label">Carrying (L)</span>
+            <span class="stat-value" id="stat-carry-left">nothing</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Carrying (R)</span>
+            <span class="stat-value" id="stat-carry-right">nothing</span>
           </div>
           <div class="stat seed-control">
             <span class="stat-label">Seed</span>
             <input id="seed-input" class="seed-input" type="text" />
             <button id="seed-load-btn" class="toolbar-btn">Load</button>
-            <button id="seed-random-btn" class="toolbar-btn">
-              Random
-            </button>
+            <button id="seed-random-btn" class="toolbar-btn">Random</button>
           </div>
           <button id="map-toggle-btn" class="toolbar-btn">
             Map <span class="key">M</span>
@@ -50,7 +52,10 @@
 
         <div class="toast" id="toast"></div>
 
-        <button class="use-item-btn" id="use-item-btn"></button>
+        <div class="use-item-row" id="use-item-row">
+          <button class="use-item-btn" id="use-item-left-btn"></button>
+          <button class="use-item-btn" id="use-item-right-btn"></button>
+        </div>
 
         <div class="world-map-overlay" id="world-map-overlay">
           <div class="world-map-panel">

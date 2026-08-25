@@ -1,22 +1,27 @@
 // Orchestrator: builds the game state and DOM refs, wires every DOM event
 // listener, and drives the tick/render loop. Behavior itself lives in the
 // other modules — this file only connects them.
-import type { GameRefs } from './types/types';
+import type { GameRefs, GameState, Hand } from './types/types';
 import {
   DEFAULT_ZOOM_INDEX,
   MAP_H,
   MAP_W,
   TICK_MS,
   TILE,
+  TOUCH_LONG_PRESS_MS,
+  TOUCH_MOVE_CANCEL_PX,
   weaponRange,
   WORLD_TILE,
 } from './constants';
 import {
+  clearAttackTarget,
   createGameState,
   floorAt,
+  getHeld,
   isSolid,
   occupantAt,
   regenerateWorld,
+  setAttackTarget,
   walkable as stateWalkable,
 } from './state/state';
 import { loadGame, saveGame } from './state/persistence';
@@ -56,6 +61,75 @@ import {
 import { render, renderWorldMap } from './render/render';
 
 let started = false;
+
+// shared logic behind both the left-click ('left' hand) and right-click
+// ('right' hand) canvas listeners below — same precedence either way:
+// enemy > tree > cactus > ctrl-bypass > held-check > pickup-check > walk
+// fallback, just scoped to whichever hand initiated the click.
+function handleClick(
+  state: GameState,
+  x: number,
+  y: number,
+  hand: Hand,
+  ctrlKey: boolean,
+  walkable: (x: number, y: number) => boolean,
+): void {
+  const { player } = state;
+
+  // an enemy under the cursor always means attack, whether or not the
+  // player is holding something to place/drop, and even with ctrl held —
+  // ctrl only suppresses pickup/place, not attacking
+  const enemyHit = state.enemies.find(
+    (en) => en.hp > 0 && en.tileX === x && en.tileY === y,
+  );
+  if (enemyHit) {
+    setAttackTarget(player, enemyHit, hand);
+    player.pendingAction = null;
+    player.path = [];
+    return;
+  }
+
+  // same precedence as an enemy hit above — a tree always means chop it,
+  // even over placing a held item on it
+  const treeHit = state.trees.get(x + ',' + y);
+  if (treeHit) {
+    setAttackTarget(player, treeHit, hand);
+    player.pendingAction = null;
+    player.path = [];
+    return;
+  }
+
+  // same precedence as a tree hit above — a cactus always means destroy
+  // it (for the cactusFruit it drops), even over placing a held item on it
+  const cactusHit = state.cacti.get(x + ',' + y);
+  if (cactusHit) {
+    setAttackTarget(player, cactusHit, hand);
+    player.pendingAction = null;
+    player.path = [];
+    return;
+  }
+
+  // holding ctrl forces a plain walk to the clicked tile, bypassing
+  // pickup/place so the player can pass through busy areas without
+  // interacting with what's there
+  if (!ctrlKey) {
+    if (getHeld(player, hand)) {
+      tryPlaceAt(state, x, y, walkable, hand);
+      return;
+    }
+    if (occupantAt(state, x, y) || floorAt(state, x, y)) {
+      trySelectPickup(state, x, y, walkable, hand);
+      return;
+    }
+  }
+
+  const path = computeClickPath(state, x, y, walkable);
+  if (path.length) {
+    player.pendingAction = null;
+    clearAttackTarget(player);
+    player.path = path;
+  }
+}
 
 export function initColonyGame(): void {
   if (started) return;
@@ -142,9 +216,12 @@ export function initColonyGame(): void {
   // ---- player movement input ----
   setupPlayerInput(state);
 
-  // ---- use held item ----
-  hud.useItemBtn.addEventListener('click', () => {
-    state.player.pendingUse = true;
+  // ---- use held item, one button per hand ----
+  hud.useItemLeftBtn.addEventListener('click', () => {
+    state.player.pendingUseLeft = true;
+  });
+  hud.useItemRightBtn.addEventListener('click', () => {
+    state.player.pendingUseRight = true;
   });
 
   // ---- hover + click on the main canvas ----
@@ -156,62 +233,86 @@ export function initColonyGame(): void {
   });
 
   canvas.addEventListener('click', (e) => {
-    const { player } = state;
     const { x, y } = screenToTile(state, e.clientX, e.clientY);
+    handleClick(state, x, y, 'left', e.ctrlKey, walkableFn);
+  });
 
-    // an enemy under the cursor always means attack, whether or not the
-    // player is holding something to place/drop, and even with ctrl held —
-    // ctrl only suppresses pickup/place, not attacking
-    const enemyHit = state.enemies.find(
-      (en) => en.hp > 0 && en.tileX === x && en.tileY === y,
-    );
-    if (enemyHit) {
-      player.attackTarget = enemyHit;
-      player.pendingAction = null;
-      player.path = [];
-      return;
+  // right-click mirrors left-click exactly, scoped to the right hand — the
+  // browser's own context menu is suppressed so the click reaches the game
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const { x, y } = screenToTile(state, e.clientX, e.clientY);
+    handleClick(state, x, y, 'right', e.ctrlKey, walkableFn);
+  });
+
+  // ---- touch: tap mirrors left-click, long-press mirrors right-click ----
+  // there's no Ctrl-equivalent modifier on touch, so the walk-bypass path
+  // (handleClick's ctrlKey param) is unreachable from touch for now
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchMoved = false;
+  let longPressFired = false;
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearLongPressTimer = () => {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
     }
+  };
 
-    // same precedence as an enemy hit above — a tree always means chop it,
-    // even over placing a held item on it
-    const treeHit = state.trees.get(x + ',' + y);
-    if (treeHit) {
-      player.attackTarget = treeHit;
-      player.pendingAction = null;
-      player.path = [];
-      return;
-    }
+  canvas.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      touchMoved = false;
+      longPressFired = false;
+      state.hoveredTile = screenToTile(state, touchStartX, touchStartY);
 
-    // same precedence as a tree hit above — a cactus always means destroy
-    // it (for the cactusFruit it drops), even over placing a held item on it
-    const cactusHit = state.cacti.get(x + ',' + y);
-    if (cactusHit) {
-      player.attackTarget = cactusHit;
-      player.pendingAction = null;
-      player.path = [];
-      return;
-    }
+      clearLongPressTimer();
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        const { x, y } = screenToTile(state, touchStartX, touchStartY);
+        handleClick(state, x, y, 'right', false, walkableFn);
+      }, TOUCH_LONG_PRESS_MS);
+    },
+    { passive: false },
+  );
 
-    // holding ctrl forces a plain walk to the clicked tile, bypassing
-    // pickup/place so the player can pass through busy areas without
-    // interacting with what's there
-    if (!e.ctrlKey) {
-      if (player.held) {
-        tryPlaceAt(state, x, y, walkableFn);
-        return;
+  canvas.addEventListener(
+    'touchmove',
+    (e) => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      if (touchMoved) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - touchStartX,
+        dy = touch.clientY - touchStartY;
+      if (Math.hypot(dx, dy) > TOUCH_MOVE_CANCEL_PX) {
+        touchMoved = true;
+        clearLongPressTimer();
       }
-      if (occupantAt(state, x, y) || floorAt(state, x, y)) {
-        trySelectPickup(state, x, y, walkableFn);
-        return;
-      }
-    }
+    },
+    { passive: false },
+  );
 
-    const path = computeClickPath(state, x, y, walkableFn);
-    if (path.length) {
-      player.pendingAction = null;
-      player.attackTarget = null;
-      player.path = path;
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    clearLongPressTimer();
+    if (!longPressFired && !touchMoved) {
+      const { x, y } = screenToTile(state, touchStartX, touchStartY);
+      handleClick(state, x, y, 'left', false, walkableFn);
     }
+    state.hoveredTile = null;
+  });
+
+  canvas.addEventListener('touchcancel', () => {
+    clearLongPressTimer();
+    state.hoveredTile = null;
   });
 
   // ---- world map ----
@@ -276,10 +377,15 @@ export function initColonyGame(): void {
     // resolved unconditionally, every tick, independent of the
     // movement/attack/pendingAction chain below — using an item (e.g.
     // healing) must work even mid-chase or mid-attack, not get starved by
-    // them the way a pickup/place pendingAction would
-    if (player.pendingUse) {
-      useHeldItem(state, hud);
-      player.pendingUse = false;
+    // them the way a pickup/place pendingAction would. Both hands are
+    // checked independently so a same-tick left+right use doesn't drop one.
+    if (player.pendingUseLeft) {
+      useHeldItem(state, hud, 'left');
+      player.pendingUseLeft = false;
+    }
+    if (player.pendingUseRight) {
+      useHeldItem(state, hud, 'right');
+      player.pendingUseRight = false;
     }
     // stepping onto water leaves the player unable to move again for a few
     // extra ticks (see Player.nextMoveAt in types.ts, set by tryPlayerStep)
@@ -292,7 +398,7 @@ export function initColonyGame(): void {
     if (dir) {
       player.path = [];
       player.pendingAction = null;
-      player.attackTarget = null;
+      clearAttackTarget(player);
       if (canStepNow) tryMove(state, hud, dir, walkableFn);
     } else if (player.attackTarget && player.attackTarget.hp > 0) {
       const t = player.attackTarget;
@@ -307,7 +413,7 @@ export function initColonyGame(): void {
           player.tileY,
           t.tileX,
           t.tileY,
-          weaponRange(player.held),
+          weaponRange(getHeld(player, player.attackHand ?? 'left')),
           (x, y) => isSolid(state, x, y),
         )
       ) {
@@ -323,7 +429,7 @@ export function initColonyGame(): void {
             walkableFn,
           );
           if (p.length) player.path = p;
-          else player.attackTarget = null;
+          else clearAttackTarget(player);
         }
         if (player.path.length && canStepNow) {
           const next = player.path[0];
@@ -341,8 +447,8 @@ export function initColonyGame(): void {
       // tryPlaceAt), since the target tile doesn't move.
       const pa = player.pendingAction;
       if (isAdjacent(player.tileX, player.tileY, pa.x, pa.y)) {
-        if (pa.type === 'pickup') doPickup(state, hud, pa.x, pa.y);
-        else doPlace(state, hud, pa.x, pa.y);
+        if (pa.type === 'pickup') doPickup(state, hud, pa.x, pa.y, pa.hand);
+        else doPlace(state, hud, pa.x, pa.y, pa.hand);
         player.pendingAction = null;
       } else if (player.path.length) {
         if (canStepNow) {

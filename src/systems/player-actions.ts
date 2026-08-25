@@ -5,6 +5,7 @@ import type {
   Dir,
   FloorType,
   GameState,
+  Hand,
   HudRefs,
   ItemType,
   Point,
@@ -24,13 +25,16 @@ import {
   WEAPON_DEFS,
 } from '../constants';
 import {
+  clearAttackTarget,
   floorAt,
+  getHeld,
   isEnemyAt,
   leaveFootprint,
   occupantAt,
   openForItem,
   placeItemNear,
   setFloor,
+  setHeld,
   setObstacle,
   setOccupant,
   spawnFloatingText,
@@ -128,15 +132,16 @@ export function tryMove(
 // placeItemNear), which combines with dirt to make more soil (see RECIPES
 // in systems/combine.ts). Anything else held just declines with a toast,
 // since it's not food (see FOOD_HEAL_AMOUNTS in constants.ts).
-export function useHeldItem(state: GameState, hud: HudRefs): void {
+export function useHeldItem(state: GameState, hud: HudRefs, hand: Hand): void {
   const { player } = state;
-  if (!player.held) return;
-  const healAmount = FOOD_HEAL_AMOUNTS[player.held as ItemType];
+  const held = getHeld(player, hand);
+  if (!held) return;
+  const healAmount = FOOD_HEAL_AMOUNTS[held as ItemType];
   if (healAmount === undefined) {
     showToast(hud, "You can't use that");
     return;
   }
-  player.held = null;
+  setHeld(player, hand, null);
   if (player.hp >= player.maxHp) {
     placeItemNear(state, player.tileX, player.tileY, 'poop');
     spawnFloatingText(state, player, 'poop', carryColor('poop'));
@@ -162,6 +167,7 @@ export function doPickup(
   hud: HudRefs,
   x: number,
   y: number,
+  hand: Hand,
 ): void {
   const { player } = state;
   const key = x + ',' + y;
@@ -172,7 +178,7 @@ export function doPickup(
   const item = state.items.get(key);
   if (item) {
     state.items.delete(key);
-    player.held = item.type;
+    setHeld(player, hand, item.type);
     // harvesting a berry restarts its still-standing berryBush's grow
     // timer, so the same bush keeps producing as long as it's kept picked
     const producingBush = state.berryBushes.get(key);
@@ -193,7 +199,7 @@ export function doPickup(
   const job = state.smelters.get(key);
   if (job) {
     state.smelters.delete(key);
-    player.held = job.item;
+    setHeld(player, hand, job.item);
     spawnFloatingText(
       state,
       player,
@@ -208,7 +214,7 @@ export function doPickup(
   const campfireJob = state.campfireJobs.get(key);
   if (campfireJob) {
     state.campfireJobs.delete(key);
-    player.held = campfireJob.item;
+    setHeld(player, hand, campfireJob.item);
     spawnFloatingText(
       state,
       player,
@@ -227,7 +233,7 @@ export function doPickup(
   if (obstacle) {
     if (OBSTACLE_DEFS[obstacle].pickable) {
       setObstacle(state, x, y, null);
-      player.held = obstacle;
+      setHeld(player, hand, obstacle);
       spawnFloatingText(
         state,
         player,
@@ -242,7 +248,7 @@ export function doPickup(
   const floor = floorAt(state, x, y);
   if (floor && FLOOR_DEFS[floor].pickable) {
     setFloor(state, x, y, null);
-    player.held = floor;
+    setHeld(player, hand, floor);
     spawnFloatingText(state, player, 'picked up ' + floor, carryColor(floor));
     updateHud(state, hud);
   }
@@ -253,11 +259,11 @@ export function doPlace(
   hud: HudRefs,
   x: number,
   y: number,
+  hand: Hand,
 ): void {
   const { player } = state;
-  if (!terrainWalkable(state, x, y) || isEnemyAt(state, x, y) || !player.held)
-    return;
-  const held = player.held;
+  const held = getHeld(player, hand);
+  if (!terrainWalkable(state, x, y) || isEnemyAt(state, x, y) || !held) return;
   const key = x + ',' + y;
 
   // a held floor tile is placed onto the floor layer, not the
@@ -281,7 +287,7 @@ export function doPlace(
           'combined into ' + resultType,
           carryColor(resultType),
         );
-        player.held = null;
+        setHeld(player, hand, null);
         updateHud(state, hud);
         return;
       }
@@ -289,7 +295,7 @@ export function doPlace(
     if (floorAt(state, x, y)) return; // already has a floor tile, stays in hand
     setFloor(state, x, y, held as FloorType);
     spawnFloatingText(state, player, 'placed ' + held, carryColor(held));
-    player.held = null;
+    setHeld(player, hand, null);
     updateHud(state, hud);
     return;
   }
@@ -317,7 +323,7 @@ export function doPlace(
         text,
         outcome === 'destroyed' ? '#ff6b35' : carryColors(held).primary,
       );
-      player.held = null;
+      setHeld(player, hand, null);
       updateHud(state, hud);
       return;
     }
@@ -341,7 +347,7 @@ export function doPlace(
         state.items.set(key, { x, y, type: item });
         spawnFloatingText(state, player, 'placed ' + item, '#ecdfc4');
       }
-      player.held = null;
+      setHeld(player, hand, null);
       updateHud(state, hud);
       return;
     }
@@ -354,7 +360,7 @@ export function doPlace(
   if (target === null) {
     setOccupant(state, x, y, held);
     spawnFloatingText(state, player, 'placed ' + held, '#ecdfc4');
-    player.held = null;
+    setHeld(player, hand, null);
     updateHud(state, hud);
     return;
   }
@@ -369,7 +375,7 @@ export function doPlace(
     'combined into ' + resultType,
     carryColor(resultType),
   );
-  player.held = null;
+  setHeld(player, hand, null);
   updateHud(state, hud);
 }
 
@@ -382,16 +388,17 @@ export function trySelectPickup(
   x: number,
   y: number,
   walkable: (x: number, y: number) => boolean,
+  hand: Hand,
 ): void {
   const { player } = state;
-  player.attackTarget = null;
+  clearAttackTarget(player);
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
-    player.pendingAction = { type: 'pickup', x, y };
+    player.pendingAction = { type: 'pickup', x, y, hand };
     return;
   }
   const path = bfsToAdjacent(player.tileX, player.tileY, x, y, walkable);
   if (path.length) {
-    player.pendingAction = { type: 'pickup', x, y };
+    player.pendingAction = { type: 'pickup', x, y, hand };
     player.path = path;
   }
 }
@@ -402,10 +409,11 @@ export function tryPlaceAt(
   x: number,
   y: number,
   walkable: (x: number, y: number) => boolean,
+  hand: Hand,
 ): void {
   const { player } = state;
-  if (!terrainWalkable(state, x, y) || !player.held) return;
-  const held = player.held;
+  const held = getHeld(player, hand);
+  if (!terrainWalkable(state, x, y) || !held) return;
   // furnace/campfire-dump bypass — occupantAt reports a bare allowItem
   // obstacle (furnace, campfire) as occupied even with nothing dumped in it
   // yet, which would otherwise wrongly block a drop there via the
@@ -419,14 +427,14 @@ export function tryPlaceAt(
     const target = occupantAt(state, x, y);
     if (target !== null && tryCombine(held, target) === null) return;
   }
-  player.attackTarget = null;
+  clearAttackTarget(player);
   if (isAdjacent(player.tileX, player.tileY, x, y)) {
-    player.pendingAction = { type: 'place', x, y };
+    player.pendingAction = { type: 'place', x, y, hand };
     return;
   }
   const path = bfsToAdjacent(player.tileX, player.tileY, x, y, walkable);
   if (path.length) {
-    player.pendingAction = { type: 'place', x, y };
+    player.pendingAction = { type: 'place', x, y, hand };
     player.path = path;
   }
 }
@@ -446,9 +454,15 @@ export function attemptPlayerAttack(
   const { player } = state;
   const t = player.attackTarget;
   if (!t || t.hp <= 0) return;
+  // which hand initiated this attack — set alongside attackTarget by
+  // setAttackTarget (state/state.ts) when the player clicked the target;
+  // defaults to 'left' as a defensive fallback, though attackHand should
+  // always be non-null whenever attackTarget is
+  const hand = player.attackHand ?? 'left';
+  const held = getHeld(player, hand);
   // a weapon in-hand (see WEAPON_DEFS in constants.ts) overrides the
   // unarmed damage/cooldown; anything else held (or nothing) attacks unarmed
-  const weapon = player.held ? WEAPON_DEFS[player.held as ItemType] : undefined;
+  const weapon = held ? WEAPON_DEFS[held as ItemType] : undefined;
   const damage = weapon?.damage ?? PLAYER_ATK_DAMAGE;
   const cooldownTicks = weapon?.cooldownTicks ?? PLAYER_ATK_COOLDOWN_TICKS;
   // gated against state.tick, not `now`, so cadence is exact regardless of
@@ -460,7 +474,7 @@ export function attemptPlayerAttack(
   // fireProjectile's comment in combat.ts. game.ts's attack-chase loop
   // already confirmed the target is in range (and, for range > 1, in line
   // of sight) before calling this, so no geometry check is needed here.
-  if (weaponRange(player.held) > 1) {
+  if (weaponRange(held) > 1) {
     fireProjectile(state, player, t, damage, now);
   } else if (t.kind === 'enemy') {
     damageEnemy(state, hud, t, damage, now);

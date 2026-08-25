@@ -59,7 +59,8 @@ describe('attemptPlayerAttack', () => {
     const hud = createTestHudRefs();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
-    state.player.held = 'sword';
+    state.player.attackHand = 'left';
+    state.player.heldLeft = 'sword';
 
     attemptPlayerAttack(state, hud, 1000);
 
@@ -76,7 +77,7 @@ describe('attemptPlayerAttack', () => {
     const hud = createTestHudRefs();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
-    state.player.held = 'ore';
+    state.player.heldLeft = 'ore';
 
     attemptPlayerAttack(state, hud, 1000);
 
@@ -127,7 +128,7 @@ describe('attemptPlayerAttack', () => {
     const hud = createTestHudRefs();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
-    state.player.held = 'bow';
+    state.player.heldLeft = 'bow';
 
     attemptPlayerAttack(state, hud, 1000);
 
@@ -141,12 +142,30 @@ describe('attemptPlayerAttack', () => {
     const hud = createTestHudRefs();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
-    state.player.held = 'bow';
+    state.player.heldLeft = 'bow';
     const hpBefore = state.player.hp;
 
     attemptPlayerAttack(state, hud, 1000);
 
     expect(state.player.hp).toBe(hpBefore - PLAYER_ATK_HP_COST);
+  });
+
+  it("uses the right hand's weapon when the attack was initiated with the right hand", () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    const enemy = createTestEnemy(10, 10);
+    state.player.attackTarget = enemy;
+    state.player.attackHand = 'right';
+    state.player.heldLeft = 'sword';
+    state.player.heldRight = 'bow';
+
+    attemptPlayerAttack(state, hud, 1000);
+
+    // bow fires a delayed projectile instead of dealing instant sword damage
+    expect(enemy.hp).toBe(enemy.maxHp);
+    expect(state.projectiles).toHaveLength(1);
+    expect(state.projectiles[0].target).toBe(enemy);
+    expect(state.player.nextAttackAt).toBe(state.tick + 5); // bow's cooldownTicks
   });
 });
 
@@ -200,13 +219,15 @@ describe('trySelectPickup', () => {
     state.obstacles.set('20,20', 'wood');
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
-    trySelectPickup(state, 20, 20, walkableFn);
+    trySelectPickup(state, 20, 20, walkableFn, 'left');
 
     expect(state.player.attackTarget).toBeNull();
+    expect(state.player.attackHand).toBeNull();
     expect(state.player.pendingAction).toEqual({
       type: 'pickup',
       x: 20,
       y: 20,
+      hand: 'left',
     });
   });
 
@@ -220,15 +241,16 @@ describe('trySelectPickup', () => {
     state.obstacles.set(tileX + 1 + ',' + tileY, 'wood');
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
-    trySelectPickup(state, tileX + 1, tileY, walkableFn);
+    trySelectPickup(state, tileX + 1, tileY, walkableFn, 'left');
 
     expect(state.player.attackTarget).toBeNull();
     expect(state.player.pendingAction).toEqual({
       type: 'pickup',
       x: tileX + 1,
       y: tileY,
+      hand: 'left',
     });
-    expect(state.player.held).toBeNull();
+    expect(state.player.heldLeft).toBeNull();
   });
 });
 
@@ -237,13 +259,18 @@ describe('tryPlaceAt', () => {
     const state = createTestGameState();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
-    state.player.held = 'ore';
+    state.player.heldLeft = 'ore';
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
-    tryPlaceAt(state, 20, 20, walkableFn);
+    tryPlaceAt(state, 20, 20, walkableFn, 'left');
 
     expect(state.player.attackTarget).toBeNull();
-    expect(state.player.pendingAction).toEqual({ type: 'place', x: 20, y: 20 });
+    expect(state.player.pendingAction).toEqual({
+      type: 'place',
+      x: 20,
+      y: 20,
+      hand: 'left',
+    });
   });
 
   // same deferred-resolution note as trySelectPickup above
@@ -251,19 +278,20 @@ describe('tryPlaceAt', () => {
     const state = createTestGameState();
     const enemy = createTestEnemy(10, 10);
     state.player.attackTarget = enemy;
-    state.player.held = 'ore';
+    state.player.heldLeft = 'ore';
     const { tileX, tileY } = state.player;
     const walkableFn = (x: number, y: number) => walkable(state, x, y);
 
-    tryPlaceAt(state, tileX + 1, tileY, walkableFn);
+    tryPlaceAt(state, tileX + 1, tileY, walkableFn, 'left');
 
     expect(state.player.attackTarget).toBeNull();
     expect(state.player.pendingAction).toEqual({
       type: 'place',
       x: tileX + 1,
       y: tileY,
+      hand: 'left',
     });
-    expect(state.player.held).toBe('ore');
+    expect(state.player.heldLeft).toBe('ore');
   });
 });
 
@@ -273,9 +301,9 @@ describe('doPickup', () => {
     const hud = createTestHudRefs();
     state.floor.set('5,5', 'dirt');
 
-    doPickup(state, hud, 5, 5);
+    doPickup(state, hud, 5, 5, 'left');
 
-    expect(state.player.held).toBe('dirt');
+    expect(state.player.heldLeft).toBe('dirt');
     expect(state.floor.get('5,5')).toBeUndefined();
   });
 
@@ -285,9 +313,9 @@ describe('doPickup', () => {
     state.floor.set('5,5', 'dirt');
     state.obstacles.set('5,5', 'wood');
 
-    doPickup(state, hud, 5, 5);
+    doPickup(state, hud, 5, 5, 'left');
 
-    expect(state.player.held).toBe('wood');
+    expect(state.player.heldLeft).toBe('wood');
     expect(state.obstacles.get('5,5')).toBeUndefined();
     expect(state.floor.get('5,5')).toBe('dirt');
   });
@@ -298,11 +326,23 @@ describe('doPickup', () => {
     state.floor.set('5,5', 'dirt');
     state.obstacles.set('5,5', 'tree');
 
-    doPickup(state, hud, 5, 5);
+    doPickup(state, hud, 5, 5, 'left');
 
-    expect(state.player.held).toBeNull();
+    expect(state.player.heldLeft).toBeNull();
     expect(state.obstacles.get('5,5')).toBe('tree');
     expect(state.floor.get('5,5')).toBe('dirt');
+  });
+
+  it('picking up into the right hand leaves the left hand untouched', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.player.heldLeft = 'sword';
+    state.floor.set('5,5', 'dirt');
+
+    doPickup(state, hud, 5, 5, 'right');
+
+    expect(state.player.heldRight).toBe('dirt');
+    expect(state.player.heldLeft).toBe('sword');
   });
 });
 
@@ -310,22 +350,35 @@ describe('doPlace', () => {
   it('places a held floor tile onto an empty cell', () => {
     const state = createTestGameState();
     const hud = createTestHudRefs();
-    state.player.held = 'dirt';
+    state.player.heldLeft = 'dirt';
 
-    doPlace(state, hud, 5, 5);
+    doPlace(state, hud, 5, 5, 'left');
 
     expect(state.floor.get('5,5')).toBe('dirt');
-    expect(state.player.held).toBeNull();
+    expect(state.player.heldLeft).toBeNull();
   });
 
   it('fails to place a held floor tile onto a cell that already has one', () => {
     const state = createTestGameState();
     const hud = createTestHudRefs();
     state.floor.set('5,5', 'dirt');
-    state.player.held = 'dirt';
+    state.player.heldLeft = 'dirt';
 
-    doPlace(state, hud, 5, 5);
+    doPlace(state, hud, 5, 5, 'left');
 
-    expect(state.player.held).toBe('dirt'); // stays in hand
+    expect(state.player.heldLeft).toBe('dirt'); // stays in hand
+  });
+
+  it('placing from the right hand leaves the left hand untouched', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.player.heldLeft = 'sword';
+    state.player.heldRight = 'dirt';
+
+    doPlace(state, hud, 5, 5, 'right');
+
+    expect(state.floor.get('5,5')).toBe('dirt');
+    expect(state.player.heldRight).toBeNull();
+    expect(state.player.heldLeft).toBe('sword');
   });
 });

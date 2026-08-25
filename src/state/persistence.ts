@@ -257,7 +257,10 @@ interface SavedPlayer {
   px: number;
   py: number;
   dir: Dir;
-  held: Player['held'];
+  // optional: absent on saves from before dual-wielding existed — defaults
+  // to an empty hand on load (see loadGame below)
+  heldLeft?: Player['heldLeft'];
+  heldRight?: Player['heldRight'];
   hp: number;
   maxHp: number;
 }
@@ -314,7 +317,8 @@ export function saveGame(state: GameState): void {
       px: state.player.px,
       py: state.player.py,
       dir: state.player.dir,
-      held: state.player.held,
+      heldLeft: state.player.heldLeft,
+      heldRight: state.player.heldRight,
       hp: state.player.hp,
       maxHp: state.player.maxHp,
     },
@@ -369,11 +373,14 @@ export function loadGame(refs: GameRefs): GameState | null {
     toX: sp.tileX,
     toY: sp.tileY,
     path: [],
-    held: sp.held,
+    heldLeft: sp.heldLeft ?? null,
+    heldRight: sp.heldRight ?? null,
     pendingAction: null,
-    pendingUse: false,
+    pendingUseLeft: false,
+    pendingUseRight: false,
     attacked: false,
     attackTarget: null,
+    attackHand: null,
     nextAttackAt: 0,
     nextMoveAt: 0,
     hp: sp.hp,
