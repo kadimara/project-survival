@@ -186,48 +186,8 @@
       const FURNACE_GLOW_BRIGHT = [255, 210, 130];
       const CAMPFIRE_GLOW_DIM = [120, 55, 30];
       const CAMPFIRE_GLOW_BRIGHT = [220, 140, 70];
-      const STONE_SPECK_OFFSETS = [
-        [4, 5, 1.2],
-        [10, 4, 1],
-        [6, 10, 1.3],
-        [11, 11, 1],
-      ];
 
       // ---- copied by hand from src/render/rendering.ts ----
-      function hexToRgb(hex) {
-        const n = parseInt(hex.slice(1), 16);
-        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-      }
-
-      function shade(hex, amount) {
-        const [r, g, b] = hexToRgb(hex);
-        const target = amount >= 0 ? 255 : 0;
-        const t = Math.min(1, Math.abs(amount));
-        const mix = (c) => Math.round(c + (target - c) * t);
-        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
-      }
-
-      function shadedGradient(ctx, x, y, w, h, base) {
-        const g = ctx.createLinearGradient(x, y, x + w, y + h);
-        g.addColorStop(0, shade(base, 0.3));
-        g.addColorStop(1, shade(base, -0.22));
-        return g;
-      }
-
-      function fillBlob(ctx, cx, cy, r) {
-        const lobes = [
-          [0, 0, 1],
-          [-r * 0.55, r * 0.2, 0.72],
-          [r * 0.55, r * 0.2, 0.72],
-          [0, -r * 0.5, 0.68],
-        ];
-        for (const [dx, dy, scale] of lobes) {
-          ctx.beginPath();
-          ctx.arc(cx + dx, cy + dy, r * scale, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
       function drawTile(ctx, sx, sy) {
         const tx = sx / TILE,
           ty = sy / TILE;
@@ -240,51 +200,19 @@
         const { primary, secondary } = colors;
         const m1 = Math.max(1, Math.round(TILE * 0.09));
         const m2 = Math.max(1, Math.round(TILE * 0.16));
-        const outer = TILE - m1 * 2;
-        const inner = TILE - m2 * 2;
-        ctx.fillStyle = shade(secondary, -0.15);
-        ctx.fillRect(sx + m1, sy + m1, outer, outer);
-        ctx.fillStyle = shadedGradient(ctx, sx + m2, sy + m2, inner, inner, primary);
-        ctx.fillRect(sx + m2, sy + m2, inner, inner);
+        ctx.fillStyle = secondary;
+        ctx.fillRect(sx + m1, sy + m1, TILE - m1 * 2, TILE - m1 * 2);
+        ctx.fillStyle = primary;
+        ctx.fillRect(sx + m2, sy + m2, TILE - m2 * 2, TILE - m2 * 2);
       }
 
-      function drawStoneBody(ctx, sx, sy, colors) {
-        drawObstacleOverlay(ctx, sx, sy, colors);
-        ctx.fillStyle = shade(colors.secondary, -0.3);
-        for (const [ox, oy, r] of STONE_SPECK_OFFSETS) {
-          ctx.beginPath();
-          ctx.arc(sx + ox, sy + oy, r, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      function drawWoodLogBody(ctx, sx, sy, colors) {
-        drawObstacleOverlay(ctx, sx, sy, colors);
-        const cx = sx + TILE / 2,
-          cy = sy + TILE / 2;
-        const maxR = TILE * 0.32;
-        ctx.strokeStyle = shade(colors.secondary, -0.2);
-        ctx.lineWidth = 1;
-        for (let i = 1; i <= 3; i++) {
-          ctx.beginPath();
-          ctx.arc(cx, cy, (maxR * i) / 3, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.fillStyle = shade(colors.secondary, -0.3);
-        ctx.beginPath();
-        ctx.arc(cx, cy, 1.4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      function drawObstacle(ctx, sx, sy, colors, type) {
+      function drawObstacle(ctx, sx, sy, colors) {
         drawTile(ctx, sx, sy);
-        if (type === 'stone') drawStoneBody(ctx, sx, sy, colors);
-        else if (type === 'wood') drawWoodLogBody(ctx, sx, sy, colors);
-        else drawObstacleOverlay(ctx, sx, sy, colors);
+        drawObstacleOverlay(ctx, sx, sy, colors);
       }
 
       function drawFloorOverlay(ctx, sx, sy, colors) {
-        ctx.fillStyle = shadedGradient(ctx, sx, sy, TILE, TILE, colors.primary);
+        ctx.fillStyle = colors.primary;
         ctx.fillRect(sx, sy, TILE, TILE);
       }
 
@@ -298,83 +226,44 @@
           oym = (TILE - outerH) / 2;
         const ixm = (TILE - innerW) / 2,
           iym = (TILE - innerH) / 2;
-        ctx.fillStyle = shade(secondary, -0.15);
+        ctx.fillStyle = secondary;
         ctx.fillRect(sx + oxm, sy + oym, outerW, outerH);
-        ctx.fillStyle = shadedGradient(ctx, sx + ixm, sy + iym, innerW, innerH, primary);
+        ctx.fillStyle = primary;
         ctx.fillRect(sx + ixm, sy + iym, innerW, innerH);
-        ctx.fillStyle = shade(primary, -0.35);
-        ctx.fillRect(sx + ixm + 2, sy + iym + 1, 1, innerH - 2);
-        ctx.fillRect(sx + ixm + 5, sy + iym + 1, 1, innerH - 2);
       }
 
       function drawTreeCanopy(ctx, sx, sy, colors) {
         const { primary, secondary } = colors;
-        const cx = sx + TILE / 2,
-          cy = sy + TILE / 2;
-        const r = TILE * 0.68;
-        ctx.fillStyle = shade(secondary, -0.1);
-        fillBlob(ctx, cx, cy, r);
-        ctx.fillStyle = shadedGradient(ctx, cx - r, cy - r, r * 2, r * 2, primary);
-        fillBlob(ctx, cx - 1, cy - 1, r * 0.86);
+        const outerW = 20,
+          outerH = 24;
+        const innerW = 16,
+          innerH = 20;
+        const oxm = (TILE - outerW) / 2,
+          oym = (TILE - outerH) / 2;
+        const ixm = (TILE - innerW) / 2,
+          iym = (TILE - innerH) / 2;
+        ctx.fillStyle = secondary;
+        ctx.fillRect(sx + oxm, sy + oym, outerW, outerH);
+        ctx.fillStyle = primary;
+        ctx.fillRect(sx + ixm, sy + iym, innerW, innerH);
       }
 
       function drawCactusBody(ctx, sx, sy, colors, fruitColors) {
-        const { primary, secondary } = colors;
-        const rx = TILE * 0.3,
-          ry = TILE * 0.44;
-        const cx = sx + TILE / 2,
-          cy = sy + TILE - ry - TILE * 0.06;
-
-        ctx.fillStyle = shade(secondary, -0.15);
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, rx + 1.5, ry + 1.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = shadedGradient(ctx, cx - rx, cy - ry, rx * 2, ry * 2, primary);
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = shade(secondary, -0.3);
-        ctx.lineWidth = 1;
-        for (const dx of [-rx * 0.45, 0, rx * 0.45]) {
-          ctx.beginPath();
-          ctx.moveTo(cx + dx, cy - ry + 2);
-          ctx.lineTo(cx + dx, cy + ry - 2);
-          ctx.stroke();
-        }
-
-        const fruitR = Math.max(2, Math.round(TILE * 0.15));
-        const fcx = cx,
-          fcy = cy - ry + fruitR;
+        drawObstacleOverlay(ctx, sx, sy, colors);
+        const fruitSize = Math.max(3, Math.round(TILE * 0.28));
+        const fx = sx + (TILE - fruitSize) / 2;
+        const fy = sy + Math.round(TILE * 0.18);
         ctx.fillStyle = fruitColors.secondary;
-        ctx.beginPath();
-        ctx.arc(fcx, fcy, fruitR + 1, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillRect(fx - 1, fy - 1, fruitSize + 2, fruitSize + 2);
         ctx.fillStyle = fruitColors.primary;
-        ctx.beginPath();
-        ctx.arc(fcx, fcy, fruitR, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = shade(fruitColors.primary, 0.45);
-        ctx.beginPath();
-        ctx.arc(fcx - fruitR * 0.35, fcy - fruitR * 0.35, fruitR * 0.3, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillRect(fx, fy, fruitSize, fruitSize);
       }
 
       function drawBerryBushBody(ctx, sx, sy, colors) {
-        const { primary, secondary } = colors;
-        const cx = sx + TILE / 2,
-          cy = sy + TILE / 2;
-        const r = TILE * 0.42;
-        ctx.fillStyle = shade(secondary, -0.1);
-        fillBlob(ctx, cx, cy, r);
-        ctx.fillStyle = shadedGradient(ctx, cx - r, cy - r, r * 2, r * 2, primary);
-        fillBlob(ctx, cx - 0.5, cy - 0.5, r * 0.86);
+        drawObstacleOverlay(ctx, sx, sy, colors);
         ctx.fillStyle = BERRY_SPOT_PREVIEW_COLOR;
         for (const [ox, oy] of BERRY_DOT_OFFSETS) {
-          ctx.beginPath();
-          ctx.arc(sx + ox, sy + oy, 1, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillRect(sx + ox, sy + oy, 1, 1);
         }
       }
 
@@ -391,19 +280,6 @@
         return a * 0.65 + b * 0.35;
       }
 
-      function drawCampfireLogs(ctx, sx, sy, colors) {
-        const { primary, secondary } = colors;
-        ctx.save();
-        ctx.translate(sx + TILE / 2, sy + TILE / 2);
-        ctx.rotate(-0.35);
-        ctx.fillStyle = shade(secondary, -0.1);
-        ctx.fillRect(-8, -1.5, 16, 3);
-        ctx.rotate(0.7);
-        ctx.fillStyle = shadedGradient(ctx, -8, -1.5, 16, 3, primary);
-        ctx.fillRect(-8, -1.5, 16, 3);
-        ctx.restore();
-      }
-
       function drawGlow(ctx, sx, sy, now, seed, primary, sizeFrac, dim, bright) {
         const outerRaw = Math.max(4, Math.round(TILE * sizeFrac));
         const outer = outerRaw - (outerRaw % 2);
@@ -418,52 +294,25 @@
       }
 
       function drawOreDots(ctx, sx, sy, color) {
+        ctx.fillStyle = color;
         for (const [ox, oy, size] of ORE_DOT_OFFSETS) {
-          const r = size / 2;
-          const cx = sx + ox + r,
-            cy = sy + oy + r;
-          ctx.fillStyle = shade(color, -0.25);
-          ctx.beginPath();
-          ctx.arc(cx, cy, r + 0.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(cx, cy, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = shade(color, 0.45);
-          ctx.beginPath();
-          ctx.arc(cx - r * 0.3, cy - r * 0.3, r * 0.32, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillRect(sx + ox, sy + oy, size, size);
         }
       }
 
       function drawBerryDots(ctx, sx, sy, color) {
+        ctx.fillStyle = color;
         for (const [ox, oy] of BERRY_DOT_OFFSETS) {
-          const cx = sx + ox + 1,
-            cy = sy + oy + 1;
-          ctx.fillStyle = shade(color, -0.3);
-          ctx.beginPath();
-          ctx.arc(cx, cy, 1.6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(cx, cy, 1.3, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = shade(color, 0.55);
-          ctx.beginPath();
-          ctx.arc(cx - 0.4, cy - 0.4, 0.45, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillRect(sx + ox, sy + oy, 2, 2);
         }
       }
 
       function drawReedIcon(ctx, sx, sy, colors) {
         const baseY = sy + 15;
         for (const [ox, h, headH] of REED_STALK_OFFSETS) {
-          ctx.fillStyle = shade(colors.primary, -0.12);
+          ctx.fillStyle = colors.primary;
           ctx.fillRect(sx + ox - 1, baseY - h, REED_STALK_W, h);
-          ctx.fillStyle = shade(colors.primary, 0.28);
-          ctx.fillRect(sx + ox, baseY - h, 1, h);
-          ctx.fillStyle = shade(colors.secondary, -0.1);
+          ctx.fillStyle = colors.secondary;
           ctx.fillRect(sx + ox - 1, baseY - h - headH + 2, REED_STALK_W, headH);
         }
       }
@@ -475,22 +324,20 @@
           const wobble = i % 2 === 0 ? -1 : 1;
           const x = sx + Math.round(t * span) + wobble;
           const y = sy + Math.round(t * span) - wobble;
-          const base = i % 2 === 0 ? colors.primary : colors.secondary;
-          ctx.fillStyle = shadedGradient(ctx, x, y, ROPE_THICKNESS, ROPE_THICKNESS, base);
+          ctx.fillStyle = i % 2 === 0 ? colors.primary : colors.secondary;
           ctx.fillRect(x, y, ROPE_THICKNESS, ROPE_THICKNESS);
         }
       }
 
       function drawFishingRodIcon(ctx, sx, sy, colors) {
+        ctx.fillStyle = colors.primary;
         for (const [ox, oy] of FISHING_ROD_POLE_STEPS) {
-          ctx.fillStyle = shadedGradient(ctx, sx + ox - 1, sy + oy - 1, 3, 3, colors.primary);
           ctx.fillRect(sx + ox - 1, sy + oy - 1, 3, 3);
         }
-        ctx.fillStyle = shade(colors.secondary, -0.05);
+        ctx.fillStyle = colors.secondary;
         for (const [ox, oy] of FISHING_ROD_LINE_STEPS) {
           ctx.fillRect(sx + ox, sy + oy, 1, 1);
         }
-        ctx.fillStyle = shadedGradient(ctx, sx + 14, sy, 2, 2, colors.secondary);
         ctx.fillRect(sx + 14, sy, 2, 2);
       }
 
@@ -503,9 +350,9 @@
         const guardH = Math.max(1, Math.round(box * 0.125));
         const guardY = bladeY + bladeH - guardH;
         const handleH = Math.max(1, Math.round(box * 0.1875));
-        ctx.fillStyle = shadedGradient(ctx, cx - bladeW / 2, bladeY, bladeW, bladeH, colors.primary);
+        ctx.fillStyle = colors.primary;
         ctx.fillRect(cx - bladeW / 2, bladeY, bladeW, bladeH);
-        ctx.fillStyle = shade(colors.secondary, -0.1);
+        ctx.fillStyle = colors.secondary;
         ctx.fillRect(cx - guardW / 2, guardY, guardW, guardH);
         ctx.fillRect(cx - bladeW / 2, guardY + guardH, bladeW, handleH);
       }
@@ -517,9 +364,9 @@
         const stringW = Math.max(1, Math.round(box * 0.1));
         const stringX = sx + Math.round(box * 0.3);
         const bulge = [0, 0.14, 0.24, 0.14, 0];
-        ctx.fillStyle = shade(colors.secondary, -0.1);
+        ctx.fillStyle = colors.secondary;
         ctx.fillRect(stringX - stringW, sy, stringW, box);
-        ctx.fillStyle = shadedGradient(ctx, sx, sy, box, box, colors.primary);
+        ctx.fillStyle = colors.primary;
         for (let i = 0; i < segments; i++) {
           const bx = stringX + Math.round(box * bulge[i]);
           ctx.fillRect(bx, sy + Math.round(i * segH), limbW, Math.ceil(segH) + 1);
@@ -537,13 +384,10 @@
         const size = Math.max(4, Math.round(TILE * 0.4));
         const ix = sx + (TILE - size) / 2,
           iy = sy + (TILE - size) / 2;
-        ctx.fillStyle = shade(colors.secondary, -0.1);
+        ctx.fillStyle = colors.secondary;
         ctx.fillRect(ix - 1, iy - 1, size + 2, size + 2);
-        ctx.fillStyle = shadedGradient(ctx, ix, iy, size, size, colors.primary);
+        ctx.fillStyle = colors.primary;
         ctx.fillRect(ix, iy, size, size);
-        const hl = Math.max(1, Math.round(size * 0.32));
-        ctx.fillStyle = shade(colors.primary, 0.4);
-        ctx.fillRect(ix + 1, iy + 1, hl, hl);
       }
       // ---- end copied section ----
 
@@ -601,12 +445,8 @@
         addHex(obstaclesEl, OBSTACLE_DEFS[name]);
       }
 
-      addStaticObstacle('stone', (ctx) =>
-        drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone, 'stone'),
-      );
-      addStaticObstacle('wood', (ctx) =>
-        drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.wood, 'wood'),
-      );
+      addStaticObstacle('stone', (ctx) => drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone));
+      addStaticObstacle('wood', (ctx) => drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.wood));
       addStaticObstacle('berryBush', (ctx) => {
         drawTile(ctx, 0, 0);
         drawBerryBushBody(ctx, 0, 0, OBSTACLE_DEFS.berryBush);
@@ -635,11 +475,11 @@
       // animates on top each frame — matches ground-atlas.ts + render.ts
       {
         const ctx = makeSwatch(obstaclesEl, 'furnace');
-        drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone, 'stone');
+        drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone);
         animated.push({
           ctx,
           draw: (now) => {
-            drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone, 'stone');
+            drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone);
             drawGlow(
               ctx,
               0,
@@ -657,13 +497,11 @@
       }
       {
         const ctx = makeSwatch(obstaclesEl, 'campfire');
-        drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone, 'stone');
-        drawCampfireLogs(ctx, 0, 0, OBSTACLE_DEFS.wood);
+        drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone);
         animated.push({
           ctx,
           draw: (now) => {
-            drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone, 'stone');
-            drawCampfireLogs(ctx, 0, 0, OBSTACLE_DEFS.wood);
+            drawObstacle(ctx, 0, 0, OBSTACLE_DEFS.stone);
             drawGlow(
               ctx,
               0,
