@@ -393,7 +393,8 @@ export function buildOasisPatch(
 // noise-perturbed boundary the same way buildStones' spawn-safety carve
 // hugs a fixed point (see SPAWN_SAFETY_R above). Bushes are checked first
 // and claim their ring at the given chance; trees are only rolled on cells
-// bushes didn't take, so a cell is never claimed by both.
+// bushes didn't take; reeds are only rolled on cells neither took — so a
+// cell is never claimed by more than one.
 export function buildVegetationRing(
   rng: Rng,
   oasis: Set<string>,
@@ -401,8 +402,9 @@ export function buildVegetationRing(
   mapH: number,
   bush: { min: number; max: number; chance: number },
   tree: { min: number; max: number; chance: number },
-): { bushes: Set<string>; trees: Set<string> } {
-  const maxRing = Math.max(bush.max, tree.max);
+  reed: { min: number; max: number; chance: number },
+): { bushes: Set<string>; trees: Set<string>; reeds: Set<string> } {
+  const maxRing = Math.max(bush.max, tree.max, reed.max);
   const dist = new Map<string, number>();
   let frontier: Cell[] = [];
   for (const key of oasis) {
@@ -434,15 +436,18 @@ export function buildVegetationRing(
 
   const bushes = new Set<string>();
   const trees = new Set<string>();
+  const reeds = new Set<string>();
   for (const [key, d] of dist) {
     if (d === 0) continue; // an oasis cell itself, not a candidate
     if (d >= bush.min && d <= bush.max && rng() < bush.chance) {
       bushes.add(key);
     } else if (d >= tree.min && d <= tree.max && rng() < tree.chance) {
       trees.add(key);
+    } else if (d >= reed.min && d <= reed.max && rng() < reed.chance) {
+      reeds.add(key);
     }
   }
-  return { bushes, trees };
+  return { bushes, trees, reeds };
 }
 
 // scatters cacti independently across every open tile of the map, unlike

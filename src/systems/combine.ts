@@ -29,6 +29,10 @@ export const RECIPES: CombineRecipe[] = [
   // places any (see buildWorldLayers in state/state.ts); a berryBush
   // (see systems/farming.ts) has to be moved onto soil made this way
   { held: 'dirt', target: 'poop', result: 'soil' },
+  // two reeds (gathered from the oasis's edge, see buildVegetationRing in
+  // worldgen.ts) braid into rope — same "two of the same raw material"
+  // shape as ingot + ingot => sword above
+  { held: 'reed', target: 'reed', result: 'rope' },
 ];
 
 function recipeKey(held: CarryType, target: CarryType): string {

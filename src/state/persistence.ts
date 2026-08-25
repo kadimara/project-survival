@@ -185,7 +185,8 @@ function base64ToBytes(b64: string): Uint8Array {
 // retired (used to be 'energy'/'energySeed', both removed) — left
 // deliberately unassigned rather than reused, same convention as
 // OBSTACLE_TO_ID above. rawMeat/meat/coal are added at the next free ids
-// after the previous max (9).
+// after the previous max (9). reed/rope are added at the next free ids
+// after that (12).
 const ITEM_TO_ID: Record<ItemType, number> = {
   ore: 3,
   ingot: 4,
@@ -197,6 +198,8 @@ const ITEM_TO_ID: Record<ItemType, number> = {
   rawMeat: 10,
   meat: 11,
   coal: 12,
+  reed: 13,
+  rope: 14,
 };
 const ID_TO_ITEM: (ItemType | undefined)[] = [
   undefined,
@@ -212,6 +215,8 @@ const ID_TO_ITEM: (ItemType | undefined)[] = [
   'rawMeat',
   'meat',
   'coal',
+  'reed',
+  'rope',
 ];
 
 function encodeItems(items: Map<string, Item>): number[] {

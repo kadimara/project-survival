@@ -19,6 +19,8 @@ const ALL_CARRY_TYPES: CarryType[] = [
   'bow',
   'berry',
   'poop',
+  'reed',
+  'rope',
 ];
 
 describe('tryCombine', () => {
@@ -40,6 +42,10 @@ describe('tryCombine', () => {
 
   it('resolves the dirt + poop recipe to soil', () => {
     expect(tryCombine('dirt', 'poop')).toBe('soil');
+  });
+
+  it('resolves the reed + reed recipe to rope', () => {
+    expect(tryCombine('reed', 'reed')).toBe('rope');
   });
 
   it('returns null for non-matching pairs', () => {

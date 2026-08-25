@@ -33,7 +33,9 @@ export type ItemType =
   | 'bow'
   | 'cactusFruit'
   | 'berry'
-  | 'poop';
+  | 'poop'
+  | 'reed'
+  | 'rope';
 export type CarryType = ObstacleType | ItemType | FloorType;
 
 // 'jerboa' is a small skittish desert rodent (and the training dummy's base

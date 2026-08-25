@@ -74,6 +74,15 @@ export const TREE_RING_MIN = 2;
 export const TREE_RING_MAX = 5;
 export const TREE_SPAWN_CHANCE = 0.05;
 
+// reeds ('reed' items, not obstacles — loose and pickable like ore, see
+// buildWorldLayers in state/state.ts) hug the water tighter than either
+// bush or tree: a one-tile-wide band right at the bank (min===max===1),
+// rolled in the same buildVegetationRing BFS pass so a cell already claimed
+// by a bush or tree is never also claimed by reed
+export const REED_RING_MIN = 1;
+export const REED_RING_MAX = 1;
+export const REED_SPAWN_CHANCE = 0.2;
+
 // ---- cactus fruit: unlike the oasis-ring bushes/trees above, cacti scatter
 // across the *whole* desert (see buildCactusScatter in worldgen.ts) — food
 // worth exploring for, not clustered around the one water source. Rolled
@@ -307,6 +316,18 @@ export const ITEM_DEFS: Record<
   // the two still read apart.
   poop: {
     colors: { primary: '#4a3323', secondary: '#2b1d13' },
+  },
+  // grows in the vegetation ring right at the oasis's edge (see
+  // buildVegetationRing in worldgen.ts and REED_RING_MIN/MAX above) — a
+  // fresh grassy green, unlike anything else in ITEM_DEFS. Combines with a
+  // second reed into rope (see RECIPES in systems/combine.ts).
+  reed: {
+    colors: { primary: '#8fae4a', secondary: '#4f6b24' },
+  },
+  // crafted from reed + reed (see RECIPES in systems/combine.ts) — a
+  // braided tan/khaki, distinct from wood's more orange-brown
+  rope: {
+    colors: { primary: '#d8c48a', secondary: '#a4854a' },
   },
 };
 

@@ -42,6 +42,9 @@ import {
   OBSTACLE_DEFS,
   ORE_SPAWN_CHANCE,
   PLAYER_MAX_HP,
+  REED_RING_MAX,
+  REED_RING_MIN,
+  REED_SPAWN_CHANCE,
   RESOURCE_PLACEMENT_SALT,
   SPAWN_X,
   SPAWN_Y,
@@ -490,13 +493,18 @@ function buildWorldLayers(
   for (const key of stones) obstacles.set(key, 'stone');
 
   const vegRng = mulberry32(seed ^ VEGETATION_PLACEMENT_SALT);
-  const { bushes, trees: treeCells } = buildVegetationRing(
+  const {
+    bushes,
+    trees: treeCells,
+    reeds,
+  } = buildVegetationRing(
     vegRng,
     oasis,
     MAP_W,
     MAP_H,
     { min: BUSH_RING_MIN, max: BUSH_RING_MAX, chance: BUSH_SPAWN_CHANCE },
     { min: TREE_RING_MIN, max: TREE_RING_MAX, chance: TREE_SPAWN_CHANCE },
+    { min: REED_RING_MIN, max: REED_RING_MAX, chance: REED_SPAWN_CHANCE },
   );
   const floor = new Map<string, FloorType>();
   const trees = new Map<string, Tree>();
@@ -552,6 +560,16 @@ function buildWorldLayers(
         resourceItems.push({ x: cell.x, y: cell.y, type: 'ore' });
     }
   }
+
+  // reeds grow right at the oasis's edge (see buildVegetationRing above) —
+  // a loose walkable item like ore, not a solid obstacle like bush/tree, so
+  // it just needs to avoid overlapping whatever already claimed the cell
+  for (const key of reeds) {
+    if (stones.has(key) || bushes.has(key) || treeCells.has(key)) continue;
+    const [x, y] = key.split(',').map(Number);
+    resourceItems.push({ x, y, type: 'reed' });
+  }
+
   return {
     floor,
     obstacles,
