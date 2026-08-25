@@ -21,6 +21,7 @@ const ALL_CARRY_TYPES: CarryType[] = [
   'berry',
   'poop',
   'rope',
+  'fishingRod',
 ];
 
 describe('tryCombine', () => {
@@ -36,8 +37,8 @@ describe('tryCombine', () => {
     expect(tryCombine('ingot', 'ingot')).toBe('sword');
   });
 
-  it('resolves the wood + ingot recipe to bow', () => {
-    expect(tryCombine('wood', 'ingot')).toBe('bow');
+  it('resolves the wood + rope recipe to bow', () => {
+    expect(tryCombine('wood', 'rope')).toBe('bow');
   });
 
   it('resolves the dirt + poop recipe to soil', () => {
@@ -48,11 +49,15 @@ describe('tryCombine', () => {
     expect(tryCombine('reed', 'reed')).toBe('rope');
   });
 
+  it('resolves the reed + rope recipe to fishingRod', () => {
+    expect(tryCombine('reed', 'rope')).toBe('fishingRod');
+  });
+
   it('returns null for non-matching pairs', () => {
     expect(tryCombine('rawMeat', 'ore')).toBeNull();
     expect(tryCombine('furnace', 'furnace')).toBeNull();
     expect(tryCombine('soil', 'stone')).toBeNull();
-    expect(tryCombine('ingot', 'wood')).toBeNull();
+    expect(tryCombine('wood', 'ingot')).toBeNull(); // retired since rope took over bow's recipe
     expect(tryCombine('poop', 'dirt')).toBeNull();
     expect(tryCombine('stone', 'stone')).toBeNull();
   });
@@ -68,8 +73,8 @@ describe('tryCombine', () => {
     }
   });
 
-  it('treats held/target order as significant for a non-symmetric recipe (wood + ingot)', () => {
-    expect(tryCombine('wood', 'ingot')).toBe('bow');
-    expect(tryCombine('ingot', 'wood')).toBeNull();
+  it('treats held/target order as significant for a non-symmetric recipe (wood + rope)', () => {
+    expect(tryCombine('wood', 'rope')).toBe('bow');
+    expect(tryCombine('rope', 'wood')).toBeNull();
   });
 });

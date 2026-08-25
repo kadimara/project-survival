@@ -305,10 +305,10 @@ export const ITEM_DEFS: Record<
   sword: {
     colors: { primary: '#57c2c9', secondary: '#2f6a6e' },
   },
-  // crafted from wood + ingot (see RECIPES in systems/combine.ts) — see
+  // crafted from wood + rope (see RECIPES in systems/combine.ts) — see
   // WEAPON_DEFS below for its ranged attack stats. Shares wood's colors
-  // (see OBSTACLE_DEFS.wood above) rather than ingot's, since the
-  // shaft/limb is what reads visually, not the arrowhead
+  // (see OBSTACLE_DEFS.wood above) rather than rope's, since the
+  // shaft/limb is what reads visually, not the string
   bow: {
     colors: { primary: '#a9773f', secondary: '#6b4c22' },
   },
@@ -341,6 +341,15 @@ export const ITEM_DEFS: Record<
   // orange-brown
   rope: {
     colors: { primary: '#d8c48a', secondary: '#a4854a' },
+  },
+  // crafted from reed + rope (see RECIPES in systems/combine.ts) — recipe
+  // + item only for now, no fishing/catch mechanic yet. Reed's own green
+  // as the pole (primary) paired with rope's tan as the line (secondary),
+  // so it visually reads as "built from those two" rather than a fresh
+  // unrelated palette. Drawn with its own pole-and-line icon rather than
+  // the generic item square (see drawFishingRodIcon in rendering.ts).
+  fishingRod: {
+    colors: { primary: '#8fae4a', secondary: '#a4854a' },
   },
 };
 

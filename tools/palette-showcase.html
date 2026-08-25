@@ -142,6 +142,7 @@
         berry: { primary: '#e0333f', secondary: '#8a1620' },
         poop: { primary: '#4a3323', secondary: '#2b1d13' },
         rope: { primary: '#d8c48a', secondary: '#a4854a' },
+        fishingRod: { primary: '#8fae4a', secondary: '#a4854a' },
       };
 
       const DIRT_SAND = ['#b9ac87', '#b2a47c'];
@@ -169,6 +170,18 @@
       const REED_STALK_W = 2;
       const ROPE_SEGMENTS = 8;
       const ROPE_THICKNESS = 3;
+      const FISHING_ROD_POLE_STEPS = [
+        [2, 14],
+        [4, 11],
+        [6, 9],
+        [8, 6],
+        [11, 5],
+      ];
+      const FISHING_ROD_LINE_STEPS = [
+        [11, 5],
+        [13, 3],
+        [15, 1],
+      ];
       const FURNACE_GLOW_DIM = [196, 90, 48];
       const FURNACE_GLOW_BRIGHT = [255, 210, 130];
       const CAMPFIRE_GLOW_DIM = [120, 55, 30];
@@ -316,6 +329,18 @@
         }
       }
 
+      function drawFishingRodIcon(ctx, sx, sy, colors) {
+        ctx.fillStyle = colors.primary;
+        for (const [ox, oy] of FISHING_ROD_POLE_STEPS) {
+          ctx.fillRect(sx + ox - 1, sy + oy - 1, 3, 3);
+        }
+        ctx.fillStyle = colors.secondary;
+        for (const [ox, oy] of FISHING_ROD_LINE_STEPS) {
+          ctx.fillRect(sx + ox, sy + oy, 1, 1);
+        }
+        ctx.fillRect(sx + 14, sy, 2, 2);
+      }
+
       function drawSwordIcon(ctx, box, sx, sy, colors) {
         const cx = sx + box / 2;
         const bladeW = Math.max(1, Math.round(box * 0.125));
@@ -355,6 +380,7 @@
         if (type === 'berry') return drawBerryDots(ctx, sx, sy, colors.primary);
         if (type === 'reed') return drawReedIcon(ctx, sx, sy, colors);
         if (type === 'rope') return drawRopeIcon(ctx, sx, sy, colors);
+        if (type === 'fishingRod') return drawFishingRodIcon(ctx, sx, sy, colors);
         const size = Math.max(4, Math.round(TILE * 0.4));
         const ix = sx + (TILE - size) / 2,
           iy = sy + (TILE - size) / 2;

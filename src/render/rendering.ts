@@ -457,6 +457,40 @@ export function drawRopeIcon(
   }
 }
 
+// fishingRod ground item: a diagonal pole (primary) built from the same
+// closely-overlapping-block staircase idea as drawRopeIcon, continuing
+// past its tip into a thinner line (secondary) that ends in a small hook —
+// reads as a pole-and-line silhouette rather than the generic item square.
+const FISHING_ROD_POLE_STEPS: [number, number][] = [
+  [2, 14],
+  [4, 11],
+  [6, 9],
+  [8, 6],
+  [11, 5],
+];
+const FISHING_ROD_LINE_STEPS: [number, number][] = [
+  [11, 5],
+  [13, 3],
+  [15, 1],
+];
+
+export function drawFishingRodIcon(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  colors: { primary: string; secondary: string },
+): void {
+  ctx.fillStyle = colors.primary;
+  for (const [ox, oy] of FISHING_ROD_POLE_STEPS) {
+    ctx.fillRect(sx + ox - 1, sy + oy - 1, 3, 3);
+  }
+  ctx.fillStyle = colors.secondary;
+  for (const [ox, oy] of FISHING_ROD_LINE_STEPS) {
+    ctx.fillRect(sx + ox, sy + oy, 1, 1);
+  }
+  ctx.fillRect(sx + 14, sy, 2, 2); // hook, at the line's end
+}
+
 // draws whichever visual `type` uses as a loose item — shared by
 // state.items and an in-progress furnace/campfire job (state.smelters/
 // state.campfireJobs) so a job renders exactly like the item (or, for a
@@ -492,6 +526,10 @@ export function drawItemIcon(
   }
   if (type === 'rope') {
     drawRopeIcon(ctx, sx, sy, colors);
+    return;
+  }
+  if (type === 'fishingRod') {
+    drawFishingRodIcon(ctx, sx, sy, colors);
     return;
   }
   const size = Math.max(4, Math.round(TILE * 0.4));
