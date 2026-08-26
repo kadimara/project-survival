@@ -22,7 +22,7 @@ import {
   WORLD_TILE,
 } from '../constants';
 import { getClampedCamX, getClampedCamY } from './camera';
-import { getHeld, obstacleAt } from '../state/state';
+import { getHeld, isWater, obstacleAt } from '../state/state';
 import {
   COLORS,
   drawBowIcon,
@@ -37,7 +37,7 @@ import {
   drawTreeCanopy,
   drawWake,
 } from './rendering';
-import { DIRT, OASIS } from '../worldgen/worldgen';
+import { DIRT } from '../worldgen/worldgen';
 
 // per-tile pseudo-random phase so several furnaces/campfires don't flicker
 // in lockstep with each other
@@ -140,13 +140,13 @@ export function render(state: GameState, now: number): void {
   // WAKE_FADE_MS (water — see below). Expired marks are pruned in this same
   // pass (iterating backwards so splice is safe), same convention as the
   // floatingTexts cleanup further down. A mark left on the oasis's water
-  // (state.map, not state.obstacles — see OASIS in worldgen.ts) draws as a pale
-  // wake instead of a sand darkening, so walking through the water leaves a
-  // trailing stream behind the player.
+  // (see isWater in state/state.ts) draws as a pale wake instead of a sand
+  // darkening, so walking through the water leaves a trailing stream behind
+  // the player.
   for (let i = state.footprints.length - 1; i >= 0; i--) {
     const fp = state.footprints[i];
-    const isWater = state.map[fp.y]?.[fp.x] === OASIS;
-    const fadeMs = isWater ? WAKE_FADE_MS : FOOTPRINT_FADE_MS;
+    const waterHere = isWater(state, fp.x, fp.y);
+    const fadeMs = waterHere ? WAKE_FADE_MS : FOOTPRINT_FADE_MS;
     const age = now - fp.born;
     if (age > fadeMs) {
       state.footprints.splice(i, 1);
@@ -157,7 +157,7 @@ export function render(state: GameState, now: number): void {
     if (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)
       continue;
     const alpha = 1 - age / fadeMs;
-    if (isWater) {
+    if (waterHere) {
       drawWake(ctx, TILE, sx, sy, WAKE_MAX_ALPHA * alpha);
     } else {
       drawStepDarken(ctx, TILE, sx, sy, FOOTPRINT_MAX_ALPHA * alpha);

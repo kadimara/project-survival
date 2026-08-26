@@ -144,6 +144,7 @@ export function createTestGameState(overrides?: Partial<GameState>): GameState {
     furnaces: new Map(),
     campfireJobs: new Map(),
     campfires: new Map(),
+    fishingJobs: new Map(),
     trees: new Map(),
     cacti: new Map(),
     berryBushes: new Map(),

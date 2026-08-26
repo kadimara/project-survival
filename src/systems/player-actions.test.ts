@@ -6,11 +6,13 @@ import {
   createTestTree,
 } from '../test/fixtures';
 import {
+  FISHING_CATCH_TICKS,
   PLAYER_ATK_COOLDOWN_TICKS,
   PLAYER_ATK_DAMAGE,
   PLAYER_ATK_HP_COST,
 } from '../constants';
 import { walkable } from '../state/state';
+import { OASIS } from '../worldgen/worldgen';
 import {
   attemptPlayerAttack,
   doPickup,
@@ -380,5 +382,61 @@ describe('doPlace', () => {
     expect(state.floor.get('5,5')).toBe('dirt');
     expect(state.player.heldRight).toBeNull();
     expect(state.player.heldLeft).toBe('sword');
+  });
+});
+
+describe('doPlace: fishing', () => {
+  it('starts a fishing job when a held fishingRod is placed on water, without consuming the rod', () => {
+    const state = createTestGameState({ tick: 1000 });
+    const hud = createTestHudRefs();
+    state.map[5][5] = OASIS;
+    state.player.heldLeft = 'fishingRod';
+
+    doPlace(state, hud, 5, 5, 'left');
+
+    expect(state.fishingJobs.get('5,5')?.readyAt).toBe(
+      1000 + FISHING_CATCH_TICKS,
+    );
+    expect(state.player.heldLeft).toBe('fishingRod');
+    expect(state.items.has('5,5')).toBe(false);
+  });
+
+  it('does not start a job when the target tile is not water', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.player.heldLeft = 'fishingRod';
+
+    doPlace(state, hud, 5, 5, 'left');
+
+    expect(state.fishingJobs.size).toBe(0);
+    // falls through to the ordinary "drop as loose item" placement
+    expect(state.player.heldLeft).toBeNull();
+  });
+
+  it('does not restart an in-progress job on a second click', () => {
+    const state = createTestGameState({ tick: 1000 });
+    const hud = createTestHudRefs();
+    state.map[5][5] = OASIS;
+    state.player.heldLeft = 'fishingRod';
+    doPlace(state, hud, 5, 5, 'left');
+
+    state.tick = 1005;
+    doPlace(state, hud, 5, 5, 'left');
+
+    expect(state.fishingJobs.get('5,5')?.readyAt).toBe(
+      1000 + FISHING_CATCH_TICKS,
+    );
+  });
+
+  it('does not trigger the fishing branch for anything other than a held fishingRod', () => {
+    const state = createTestGameState();
+    const hud = createTestHudRefs();
+    state.map[5][5] = OASIS;
+    state.player.heldLeft = 'ore';
+
+    doPlace(state, hud, 5, 5, 'left');
+
+    expect(state.fishingJobs.size).toBe(0);
+    expect(state.items.get('5,5')).toEqual({ x: 5, y: 5, type: 'ore' });
   });
 });

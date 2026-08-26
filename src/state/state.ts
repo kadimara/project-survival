@@ -89,6 +89,19 @@ export function isSolid(state: GameState, x: number, y: number): boolean {
   return o !== undefined && OBSTACLE_DEFS[o].solid;
 }
 
+// true when (x,y) is the oasis's water — a pure background-tile check
+// (state.map, not a FloorType/obstacle — see OASIS in worldgen.ts and
+// FloorType's comment in types.ts), not a walkability rule (a water tile is
+// still walkable, just slower — see PLAYER_WATER_MOVE_TICKS). Canonical
+// helper: tryPlayerStep's water-move penalty and doPlace's fishing-rod
+// interception (player-actions.ts), render.ts's footprint/wake check,
+// game.ts's water-constrained enemy walkable, and entities.ts's fish spawn
+// scan all read this instead of repeating `state.map[y]?.[x] === OASIS`
+// independently.
+export function isWater(state: GameState, x: number, y: number): boolean {
+  return state.map[y]?.[x] === OASIS;
+}
+
 // a fresh, full-hp tree at (x,y) — used both by world-gen (buildWorldLayers
 // below, via setObstacle) and by persistence.ts's decodeObstacleGrid.
 // Defined here rather than in entities/entities.ts (which has the
@@ -642,6 +655,7 @@ export function regenerateWorld(
   state.furnaces.clear();
   state.campfireJobs.clear();
   state.campfires.clear();
+  state.fishingJobs.clear();
   state.projectiles.length = 0;
   state.footprints.length = 0;
   for (const item of resourceItems)
@@ -694,6 +708,7 @@ export function createGameState(
     furnaces: new Map(),
     campfireJobs: new Map(),
     campfires: new Map(),
+    fishingJobs: new Map(),
     trees,
     cacti,
     berryBushes,

@@ -14,6 +14,7 @@ import {
   BERRY_BUSH_GROW_TICKS,
   carryColor,
   carryColors,
+  FISHING_CATCH_TICKS,
   FLOOR_DEFS,
   FOOD_HEAL_AMOUNTS,
   OBSTACLE_DEFS,
@@ -29,6 +30,7 @@ import {
   floorAt,
   getHeld,
   isEnemyAt,
+  isWater,
   leaveFootprint,
   occupantAt,
   openForItem,
@@ -40,7 +42,6 @@ import {
   spawnFloatingText,
   terrainWalkable,
 } from '../state/state';
-import { OASIS } from '../worldgen/worldgen';
 import { startStep } from '../entities/entities';
 import {
   bfsToAdjacent,
@@ -74,7 +75,7 @@ export function tryPlayerStep(
 ): boolean {
   const { player } = state;
   if (!walkable(nx, ny)) return false;
-  const enteringWater = state.map[ny]?.[nx] === OASIS;
+  const enteringWater = isWater(state, nx, ny);
   // both the glide animation and the tick-gate below (nextMoveAt) use the
   // same water-slowed duration, so the extra time reads as one smooth slow
   // glide through the water rather than a normal-speed step followed by a
@@ -265,6 +266,24 @@ export function doPlace(
   const held = getHeld(player, hand);
   if (!terrainWalkable(state, x, y) || isEnemyAt(state, x, y) || !held) return;
   const key = x + ',' + y;
+
+  // a fishingRod is a tool, never consumed by placing it (same convention
+  // as sword/bow never being consumed by attacking) — clicking it onto any
+  // oasis water tile starts a timed catch instead of falling through to the
+  // generic "drop as a loose item" tail below (see systems/fishing.ts).
+  // One-shot: a tile already mid-job is left alone rather than restarted.
+  if (held === 'fishingRod' && isWater(state, x, y)) {
+    if (!state.fishingJobs.has(key)) {
+      state.fishingJobs.set(key, {
+        x,
+        y,
+        readyAt: state.tick + FISHING_CATCH_TICKS,
+      });
+      spawnFloatingText(state, player, 'fishing...', carryColor('fishingRod'));
+      updateHud(state, hud);
+    }
+    return;
+  }
 
   // a held floor tile is placed onto the floor layer, not the
   // obstacle/item layers — checked first since 'dirt'/'soil' aren't keys in

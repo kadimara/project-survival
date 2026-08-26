@@ -42,7 +42,9 @@ export type ItemType =
   | 'berry'
   | 'poop'
   | 'rope'
-  | 'fishingRod';
+  | 'fishingRod'
+  | 'rawFish'
+  | 'fish';
 export type CarryType = ObstacleType | ItemType | FloorType;
 
 // 'jerboa' is a small skittish desert rodent (and the training dummy's base
@@ -50,9 +52,15 @@ export type CarryType = ObstacleType | ItemType | FloorType;
 // when it finds it, and flees rather than ever fighting back (see
 // systems/ai.ts's updateEnemy); 'boulderGuardian' lives in and defends a
 // specific boulder-cluster structure (see planGuardianClusters in
-// worldgen.ts) rather than roaming freely — see ENEMY_DEFS in constants.ts
-// for their per-type stats.
-export type EnemyType = 'jerboa' | 'boulderGuardian';
+// worldgen.ts) rather than roaming freely; 'fish' is confined to the oasis's
+// water (see game.ts's water-filtered walkable passed to updateEnemy only
+// for this type) and, like jerboa, flees rather than fighting — but unlike
+// either other type it's never a valid attack target at all (see
+// game.ts's handleClick, which excludes it from the click-to-attack lookup),
+// since it's ambient wildlife rather than something to fight: the only way
+// to get a rawFish is the fishingRod's timed catch (see systems/fishing.ts),
+// not combat — see ENEMY_DEFS in constants.ts for per-type stats.
+export type EnemyType = 'jerboa' | 'boulderGuardian' | 'fish';
 
 export interface Point {
   x: number;
@@ -97,6 +105,18 @@ export interface Smelter extends Point {
 // destroyed) and the entry is removed either way — no re-arming.
 export interface CampfireJob extends Point {
   item: CarryType;
+  readyAt: number;
+}
+
+// a fishingRod job in progress at (x,y) on oasis water — see
+// systems/fishing.ts and doPlace's fishing branch in
+// systems/player-actions.ts. Unlike Smelter/CampfireJob above, nothing is
+// consumed into the job: the rod is a tool, never consumed by using it
+// (same convention as sword/bow), so there's no `item` field to track —
+// just a bare timer keyed to a position, the same shape as BerryBush.readyAt
+// above. readyAt is a tick count (state.tick), same convention as every
+// other job timer.
+export interface FishingJob extends Point {
   readyAt: number;
 }
 
@@ -330,6 +350,9 @@ export interface GameState {
   // campfire counterparts of smelters/furnaces above — see systems/cooking.ts
   campfireJobs: Map<string, CampfireJob>;
   campfires: Map<string, Point>;
+  // in-progress fishingRod catches, keyed by the water tile fished — see
+  // systems/fishing.ts
+  fishingJobs: Map<string, FishingJob>;
   // every tree obstacle (the trunk cell), same kept-in-sync-by-setObstacle
   // pattern as furnaces above — lets the per-frame y-sorted render pass
   // draw each tree's canopy, and attemptPlayerAttack/updateProjectiles

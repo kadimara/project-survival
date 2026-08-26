@@ -23,6 +23,7 @@ import type {
   CampfireJob,
   Dir,
   EnemyType,
+  FishingJob,
   FloorType,
   GameRefs,
   GameState,
@@ -191,7 +192,8 @@ function base64ToBytes(b64: string): Uint8Array {
 // after the previous max (9). rope is added at the next free id after that
 // (12) — id 13 (formerly reed, moved to OBSTACLE_TO_ID above) is
 // deliberately left unassigned rather than reused. fishingRod is added at
-// the next free id after rope (14).
+// the next free id after rope (14). rawFish/fish are added at the next free
+// ids after fishingRod (16, 17).
 const ITEM_TO_ID: Record<ItemType, number> = {
   ore: 3,
   ingot: 4,
@@ -205,6 +207,8 @@ const ITEM_TO_ID: Record<ItemType, number> = {
   coal: 12,
   rope: 14,
   fishingRod: 15,
+  rawFish: 16,
+  fish: 17,
 };
 const ID_TO_ITEM: (ItemType | undefined)[] = [
   undefined,
@@ -223,6 +227,8 @@ const ID_TO_ITEM: (ItemType | undefined)[] = [
   undefined,
   'rope',
   'fishingRod',
+  'rawFish',
+  'fish',
 ];
 
 function encodeItems(items: Map<string, Item>): number[] {
@@ -292,6 +298,9 @@ interface SaveData {
   // absent on saves from before the campfire/cooking system existed —
   // loadGame defaults to no jobs in progress
   campfireJobs?: [string, CampfireJob][];
+  // absent on saves from before the fishing system existed — loadGame
+  // defaults to no jobs in progress
+  fishingJobs?: [string, FishingJob][];
   enemies: SavedEnemy[];
   player: SavedPlayer;
   zoomIndex: number;
@@ -306,6 +315,7 @@ export function saveGame(state: GameState): void {
     groundItems: encodeItems(state.items),
     smelters: Array.from(state.smelters.entries()),
     campfireJobs: Array.from(state.campfireJobs.entries()),
+    fishingJobs: Array.from(state.fishingJobs.entries()),
     // the training dummy (Infinity hp, doesn't survive JSON) is re-created
     // fresh on load instead of being persisted, see loadGame below
     enemies: state.enemies
@@ -431,6 +441,7 @@ export function loadGame(refs: GameRefs): GameState | null {
     furnaces,
     campfireJobs: new Map(data.campfireJobs ?? []),
     campfires,
+    fishingJobs: new Map(data.fishingJobs ?? []),
     trees,
     cacti,
     berryBushes,

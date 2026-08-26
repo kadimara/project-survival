@@ -34,8 +34,8 @@ export const RECIPES: CombineRecipe[] = [
   // worldgen.ts) braid into rope — same "two of the same raw material"
   // shape as ingot + ingot => sword above
   { held: 'reed', target: 'reed', result: 'rope' },
-  // pole + line => fishingRod — recipe + item only for now, no fishing/
-  // catch mechanic yet (see ITEM_DEFS.fishingRod in constants.ts)
+  // pole + line => fishingRod — use it on any oasis water tile to start a
+  // timed catch (see systems/fishing.ts and ITEM_DEFS.fishingRod)
   { held: 'reed', target: 'rope', result: 'fishingRod' },
 ];
 

@@ -19,6 +19,7 @@ import {
   floorAt,
   getHeld,
   isSolid,
+  isWater,
   occupantAt,
   regenerateWorld,
   setAttackTarget,
@@ -49,6 +50,7 @@ import { updateEnemy } from './systems/ai';
 import { updateProjectiles } from './systems/combat';
 import { updateBerryBushes } from './systems/farming';
 import { updateCampfireJobs } from './systems/cooking';
+import { updateFishingJobs } from './systems/fishing';
 import { updateSmelters } from './systems/smelting';
 import { createTickClock, drainTicks } from './systems/ticker';
 import {
@@ -78,9 +80,13 @@ function handleClick(
 
   // an enemy under the cursor always means attack, whether or not the
   // player is holding something to place/drop, and even with ctrl held —
-  // ctrl only suppresses pickup/place, not attacking
+  // ctrl only suppresses pickup/place, not attacking. 'fish' is excluded
+  // deliberately: it's ambient oasis wildlife, never a valid attack target
+  // (see ENEMY_DEFS.fish's comment in constants.ts) — a click on one falls
+  // through to the branches below instead, same as clicking any other water
+  // tile (e.g. resolving as a rod-fishing click if fishingRod is held).
   const enemyHit = state.enemies.find(
-    (en) => en.hp > 0 && en.tileX === x && en.tileY === y,
+    (en) => en.hp > 0 && en.type !== 'fish' && en.tileX === x && en.tileY === y,
   );
   if (enemyHit) {
     setAttackTarget(player, enemyHit, hand);
@@ -196,6 +202,13 @@ export function initColonyGame(): void {
   }
 
   const walkableFn = (x: number, y: number) => stateWalkable(state, x, y);
+  // confines a 'fish' enemy's wander/chase/flee pathing to the oasis's
+  // water — the only place this is enforced (see ENEMY_DEFS.fish's comment
+  // in constants.ts); ai.ts's updateEnemy itself needs no changes, since its
+  // wander block already gates a candidate target on `walkable(tx,ty)`
+  // before pathing to it.
+  const waterWalkableFn = (x: number, y: number) =>
+    walkableFn(x, y) && isWater(state, x, y);
 
   // ---- zoom ----
   canvas.addEventListener(
@@ -473,9 +486,16 @@ export function initColonyGame(): void {
     updateBerryBushes(state);
     updateSmelters(state);
     updateCampfireJobs(state);
+    updateFishingJobs(state);
     updateProjectiles(state, hud, now);
     for (const enemy of state.enemies)
-      updateEnemy(state, hud, enemy, now, walkableFn);
+      updateEnemy(
+        state,
+        hud,
+        enemy,
+        now,
+        enemy.type === 'fish' ? waterWalkableFn : walkableFn,
+      );
   }
 
   function frame(now: number): void {

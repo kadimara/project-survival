@@ -342,14 +342,33 @@ export const ITEM_DEFS: Record<
   rope: {
     colors: { primary: '#d8c48a', secondary: '#a4854a' },
   },
-  // crafted from reed + rope (see RECIPES in systems/combine.ts) — recipe
-  // + item only for now, no fishing/catch mechanic yet. Reed's own green
-  // as the pole (primary) paired with rope's tan as the line (secondary),
-  // so it visually reads as "built from those two" rather than a fresh
-  // unrelated palette. Drawn with its own pole-and-line icon rather than
-  // the generic item square (see drawFishingRodIcon in rendering.ts).
+  // crafted from reed + rope (see RECIPES in systems/combine.ts) — use it on
+  // any oasis water tile to start a timed catch (see systems/fishing.ts and
+  // doPlace's fishing branch in systems/player-actions.ts); the rod itself
+  // is never consumed, same as a held sword/bow. Reed's own green as the
+  // pole (primary) paired with rope's tan as the line (secondary), so it
+  // visually reads as "built from those two" rather than a fresh unrelated
+  // palette. Drawn with its own pole-and-line icon rather than the generic
+  // item square (see drawFishingRodIcon in rendering.ts).
   fishingRod: {
     colors: { primary: '#8fae4a', secondary: '#a4854a' },
+  },
+  // caught with a fishingRod on oasis water (see systems/fishing.ts) — the
+  // only source of rawFish, since the 'fish' enemy it's named after is
+  // ambient wildlife and never killable (see ENEMY_DEFS.fish below). A pale
+  // silvery-blue, deliberately unlike rawMeat's pink-red so the two "raw
+  // food" tiers read apart. Cooking it into fish on a campfire is the
+  // upgrade path (see systems/cooking.ts), same rawX -> X convention as
+  // rawMeat -> meat.
+  rawFish: {
+    colors: { primary: '#9fc4d1', secondary: '#547f8c' },
+  },
+  // rawFish cooked on a campfire — a warm golden-tan, distinct from meat's
+  // browner cooked color so the two "cooked food" tiers still read apart.
+  // Left too long, burns down to coal like meat (see BURNS_TO_COAL in
+  // systems/cooking.ts).
+  fish: {
+    colors: { primary: '#d9a45c', secondary: '#8f6530' },
   },
 };
 
@@ -382,6 +401,16 @@ export const ITEM_MELT_TICKS = 8; // ~2s at the current TICK_MS
 export const RAW_MEAT_COOK_TICKS = 12; // ~3s at the current TICK_MS
 export const CAMPFIRE_BURN_TICKS = 16; // ~4s at the current TICK_MS
 export const CAMPFIRE_DESTROY_TICKS = 10; // ~2.5s at the current TICK_MS
+export const RAW_FISH_COOK_TICKS = 12; // ~3s at the current TICK_MS, same as rawMeat
+
+// ---- fishing: the fishingRod item (see ITEM_DEFS.fishingRod) has no
+// combine recipe attached to it — using it is a click-and-wait job on any
+// oasis water tile, tracked in state.fishingJobs (see FishingJob in
+// types.ts and systems/fishing.ts), independent of the visible fleeing
+// 'fish' enemy (ENEMY_DEFS.fish below) — the mob is never killable, so this
+// timed catch is the *only* source of rawFish. A bit slower than a berry
+// bush's regrow so it doesn't trivially outclass foraging.
+export const FISHING_CATCH_TICKS = 16; // ~4s at the current TICK_MS
 
 // looks up the full color pair for anything the player can carry, whichever
 // def table (OBSTACLE_DEFS, FLOOR_DEFS, or ITEM_DEFS) it belongs to — used
@@ -491,6 +520,13 @@ export const CACTUS_FRUIT_HEAL_AMOUNT = 50;
 // healing option. Eating any food (including berries) while already at max
 // hp produces a poop item instead of healing, see useHeldItem.
 export const BERRY_HEAL_AMOUNT = 25;
+// hp restored by using (eating) a held rawFish item — weaker than
+// RAW_MEAT_HEAL_AMOUNT, fish is the "reliable but modest" tier; cooking it
+// (see systems/cooking.ts) is the upgrade path, same as rawMeat -> meat
+export const RAW_FISH_HEAL_AMOUNT = 15;
+// hp restored by using (eating) a held fish item — weaker than
+// MEAT_HEAL_AMOUNT, deliberately below meat's "best" tier
+export const FISH_HEAL_AMOUNT = 35;
 
 // food items that heal on use/eat, and by how much — shared by
 // player-actions.ts's useHeldItem (the player eating) and systems/ai.ts (a
@@ -503,6 +539,8 @@ export const FOOD_HEAL_AMOUNTS: Partial<Record<ItemType, number>> = {
   meat: MEAT_HEAL_AMOUNT,
   cactusFruit: CACTUS_FRUIT_HEAL_AMOUNT,
   berry: BERRY_HEAL_AMOUNT,
+  rawFish: RAW_FISH_HEAL_AMOUNT,
+  fish: FISH_HEAL_AMOUNT,
 };
 
 // ---- enemies: wander until they see you, then either chase-and-attack or
@@ -511,6 +549,7 @@ export const FOOD_HEAL_AMOUNTS: Partial<Record<ItemType, number>> = {
 // flat/global since no type diverges on them yet — trivial to move into
 // ENEMY_DEFS later if one needs to. ----
 export const JERBOA_COUNT = 12; // first-pass balance number, easy to retune
+export const FISH_COUNT = 6; // first-pass balance number — the oasis is small (~49 tiles)
 // in ticks — see PLAYER_ATK_COOLDOWN_TICKS's comment on why this is
 // gated against state.tick rather than wall-clock time
 export const ENEMY_LOSE_AGGRO_MS = 4000;
@@ -622,6 +661,39 @@ export const ENEMY_DEFS: Record<
     dropItem: 'rawMeat',
     colors: { primary: '#9c8465', secondary: '#5e4b34' },
     inset: 3,
+  },
+  // a small aquatic mob confined to the oasis's water — see game.ts's
+  // simulateTick, the ONLY place its water-boundedness is enforced (it
+  // passes a water-filtered walkable to updateEnemy just for this type;
+  // ai.ts itself needs no changes) and entities.ts's spawnEnemies (which
+  // scans for oasis cells instead of randomOpenTile's whole-map rejection
+  // sampling, since the oasis is a tiny fraction of the map). Never forages
+  // (foodSenseRadius: 0 — it doesn't steal items like a jerboa) and never
+  // fights (atkDamage: 0, moot anyway since fleesOnSight means it never
+  // reaches the attack branch). Unlike jerboa/boulderGuardian, it's also
+  // never a valid attack target at all — see game.ts's handleClick, which
+  // excludes type 'fish' from the click-to-attack lookup — so dropItem
+  // below is dead/inert, kept only because every ENEMY_DEFS entry shares
+  // the same shape; the only source of rawFish is the fishingRod's timed
+  // catch (see systems/fishing.ts). wanderRadius is small since
+  // OASIS_RADIUS is only 4, so wander targets usually land back in water.
+  // hopHeight: 0 (unlike jerboa) — a fish swims, it doesn't hop.
+  fish: {
+    maxHp: 3,
+    atkDamage: 0,
+    atkCooldownTicks: 2,
+    aggroRadius: 3,
+    wanderRadius: 2,
+    wanderMinMs: 600,
+    wanderMaxMs: 1400,
+    leashRadius: Infinity, // inert — home is always null, same as jerboa
+    fleesOnSight: true,
+    fleeRadius: 4,
+    foodSenseRadius: 0,
+    hopHeight: 0,
+    dropItem: 'rawFish',
+    colors: { primary: '#6fa8c9', secondary: '#3d6b8a' },
+    inset: 5,
   },
 };
 

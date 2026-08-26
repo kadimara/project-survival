@@ -3,6 +3,7 @@ import { createTestGameState } from '../test/fixtures';
 import {
   CAMPFIRE_BURN_TICKS,
   CAMPFIRE_DESTROY_TICKS,
+  RAW_FISH_COOK_TICKS,
   RAW_MEAT_COOK_TICKS,
 } from '../constants';
 import { dumpInCampfire, updateCampfireJobs } from './cooking';
@@ -16,7 +17,15 @@ describe('dumpInCampfire', () => {
     );
   });
 
-  it.each(['meat', 'wood'] as const)(
+  it("uses RAW_FISH_COOK_TICKS for rawFish (not rawMeat's duration)", () => {
+    const state = createTestGameState({ tick: 1000 });
+    dumpInCampfire(state, 1, 1, 'rawFish');
+    expect(state.campfireJobs.get('1,1')?.readyAt).toBe(
+      1000 + RAW_FISH_COOK_TICKS,
+    );
+  });
+
+  it.each(['meat', 'fish', 'wood'] as const)(
     'uses CAMPFIRE_BURN_TICKS for %s',
     (item) => {
       const state = createTestGameState({ tick: 1000 });
@@ -44,6 +53,8 @@ describe('dumpInCampfire', () => {
     expect(dumpInCampfire(state, 1, 0, 'meat')).toBe('burning');
     expect(dumpInCampfire(state, 2, 0, 'wood')).toBe('burning');
     expect(dumpInCampfire(state, 3, 0, 'berry')).toBe('destroyed');
+    expect(dumpInCampfire(state, 4, 0, 'rawFish')).toBe('cooking');
+    expect(dumpInCampfire(state, 5, 0, 'fish')).toBe('burning');
   });
 
   it('accepts a held obstacle (wood), not just an item', () => {
@@ -92,7 +103,15 @@ describe('updateCampfireJobs', () => {
     expect(state.items.get('1,1')).toEqual({ x: 1, y: 1, type: 'meat' });
   });
 
-  it.each(['meat', 'wood'] as const)(
+  it('turns rawFish into a fish ground item on its own cook duration', () => {
+    const state = createTestGameState({ tick: 1000 });
+    dumpInCampfire(state, 1, 1, 'rawFish');
+    state.tick = 1000 + RAW_FISH_COOK_TICKS;
+    updateCampfireJobs(state);
+    expect(state.items.get('1,1')).toEqual({ x: 1, y: 1, type: 'fish' });
+  });
+
+  it.each(['meat', 'fish', 'wood'] as const)(
     'turns %s into a coal ground item',
     (item) => {
       const state = createTestGameState({ tick: 1000 });

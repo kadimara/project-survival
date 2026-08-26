@@ -14,6 +14,7 @@ import type {
 import {
   ENEMY_DEFS,
   ENEMY_SPAWN_MIN_DIST,
+  FISH_COUNT,
   GUARDIAN_INHABIT_CHANCE,
   GUARDIAN_MAX_PER_CLUSTER,
   GUARDIAN_MIN_CLUSTER_SIZE,
@@ -27,7 +28,7 @@ import {
   TICK_MS,
   TILE,
 } from '../constants';
-import { randomOpenTile, walkable } from '../state/state';
+import { isWater, randomOpenTile, walkable } from '../state/state';
 import {
   type Cell,
   findClusterBorderTiles,
@@ -113,6 +114,30 @@ export function spawnEnemies(state: GameState, structures: Cell[][]): void {
       }
     }
     if (spot) state.enemies.push(makeEnemy('jerboa', spot.x, spot.y));
+  }
+
+  // fish: the oasis is only ~49 tiles out of the whole map, so
+  // randomOpenTile's whole-map rejection sampling (used by the jerboa loop
+  // above) would almost never land in it — instead enumerate every
+  // water+walkable oasis cell once and sample FISH_COUNT distinct tiles
+  // from that pool via a Fisher-Yates shuffle on state.rng() (same PRNG
+  // stream the jerboa loop above already consumes from). A reed-covered
+  // water tile is solid (see OBSTACLE_DEFS.reed), so walkable() naturally
+  // excludes it here, same as it excludes any other blocked tile.
+  const waterTiles: Point[] = [];
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      if (isWater(state, x, y) && walkable(state, x, y))
+        waterTiles.push({ x, y });
+    }
+  }
+  for (let i = waterTiles.length - 1; i > 0; i--) {
+    const j = Math.floor(state.rng() * (i + 1));
+    [waterTiles[i], waterTiles[j]] = [waterTiles[j], waterTiles[i]];
+  }
+  for (let i = 0; i < Math.min(FISH_COUNT, waterTiles.length); i++) {
+    const spot = waterTiles[i];
+    state.enemies.push(makeEnemy('fish', spot.x, spot.y));
   }
 
   // boulder guardians: a salted RNG stream, independent of both the terrain
